@@ -2313,7 +2313,7 @@ function AuthScreen({ go, onSignIn }) {
   const [email, setEmail] = useState("");
   const [stage, setStage] = useState("email");
   const [code, setCode] = useState(["", "", "", "", "", ""]);
-  const valid = email.endsWith("@exeter.ac.uk") && email.length > 16;
+  const valid = email.includes("@") && email.length > 5;
 
   const handleCode = async (i, v) => {
     const next = [...code]; next[i] = v.slice(-1); setCode(next);
