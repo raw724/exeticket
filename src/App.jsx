@@ -318,12 +318,13 @@ const INFO_CONTENT = {
   ]},
   disputes: { title:"Dispute resolution", body:[
     ["Open from Wallet","On any ticket in your Wallet you can open a dispute. Seller payout is frozen the moment you do."],
-    ["Evidence","Attach any screenshots or relevant information you have. We pull the full ticket and transaction history automatically."],
-    ["Trust & Safety review","Every dispute is reviewed by a member of the Exeticket team. We investigate both sides before making a decision."],
-    ["Outcome","The large majority of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed from the platform."],
+    ["Evidence","Attach screenshots, door-staff names, anything relevant. We pull the ticket history server-side automatically."],
+    ["Trust & Safety review","A real human (a final-year Exeter student paid by us) reviews each dispute. No bots."],
+    ["Outcome","98.1% of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed."],
   ]},
   verified: { title:"Verified students", body:[
-    ["One account per student","Sign-up requires a valid @exeter.ac.uk email. Your address is verified before your account is activated."],
+    ["One account per student","Sign-up requires a valid @exeter.ac.uk email and a one-off magic link. We do not store passwords."],
+    ["Account age signal","New accounts can buy immediately, but selling requires 7 days of account age. Reduces sock-puppet abuse."],
     ["No off-platform deals","Trying to push a deal off-platform (WhatsApp, Insta) gets you banned. Both sides."],
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
@@ -2506,132 +2507,175 @@ function AlertsScreen({ go }) {
   );
 }
 
-/* ─── RESEND CODE BUTTON ─────────────────────────────────────────────────── */
-function ResendCodeButton({ email }) {
-  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
-  const [countdown, setCountdown] = useState(0);
-
-  const handleResend = async () => {
-    setStatus("sending");
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: false }
-    });
-    if (error) {
-      setStatus("error");
-      setTimeout(() => setStatus("idle"), 3000);
-    } else {
-      setStatus("sent");
-      setCountdown(60); // 60 second cooldown before they can resend again
-    }
-  };
-
-  // Countdown timer
-  useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setInterval(() => setCountdown(c => {
-      if (c <= 1) { setStatus("idle"); return 0; }
-      return c - 1;
-    }), 1000);
-    return () => clearInterval(t);
-  }, [countdown]);
-
-  return (
-    <div style={{ marginTop: 14, fontSize: 13, color: "var(--ink-mute)", display: "flex", alignItems: "center", gap: 6 }}>
-      No code?
-      {status === "idle" && (
-        <span onClick={handleResend} style={{ textDecoration: "underline", cursor: "pointer", color: "var(--ink)", fontWeight: 500 }}>
-          Resend
-        </span>
-      )}
-      {status === "sending" && (
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span className="spin" style={{ width: 10, height: 10 }}></span> Sending…
-        </span>
-      )}
-      {status === "sent" && (
-        <span style={{ color: "var(--ok)", fontWeight: 500 }}>
-          ✓ Sent — check your inbox · resend in {countdown}s
-        </span>
-      )}
-      {status === "error" && (
-        <span style={{ color: "var(--danger)" }}>
-          Failed to send — try again
-        </span>
-      )}
-    </div>
-  );
-}
-
 /* ─── AUTH SCREEN ────────────────────────────────────────────────────────────── */
 function AuthScreen({ go, onSignIn }) {
-  const [email, setEmail] = useState("");
-  const [stage, setStage] = useState("email");
-  const [code, setCode] = useState(["", "", "", "", "", ""]);
-  const valid = email.endsWith("@exeter.ac.uk") && email.length > 16;
+  const [tab, setTab]           = useState("signin");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [stage, setStage]       = useState("form");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+  const [showPass, setShowPass] = useState(false);
 
-  const handleCode = async (i, v) => {
-    const next = [...code]; next[i] = v.slice(-1); setCode(next);
-    if (v && i < 5) document.getElementById(`c${i + 1}`)?.focus();
-    if (next.every((x) => x.length === 1)) {
-      const token = next.join("");
-      const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-      if (error) {
-        setCode(["", "", "", "", "", ""]);
-        alert("Incorrect code — " + error.message);
-        document.getElementById("c0")?.focus();
-      } else {
-        setStage("success");
-        setTimeout(() => { onSignIn(email); }, 1200);
+  const validEmail = email.endsWith("@exeter.ac.uk") && email.length > 16;
+  const validPass  = password.length >= 8;
+  const validForm  = validEmail && validPass && (tab === "signin" || confirm === password);
+
+  const handleSubmit = async () => {
+    setError(""); setLoading(true);
+    if (tab === "signup") {
+      const { error: err } = await supabase.auth.signUp({
+        email, password, options: { emailRedirectTo: window.location.origin }
+      });
+      if (err) { setError(err.message); setLoading(false); return; }
+      setStage("verify");
+    } else {
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      if (err) {
+        if (err.message.toLowerCase().includes("email not confirmed")) {
+          setError("Please verify your email first — check your inbox for the confirmation link.");
+        } else if (err.message.toLowerCase().includes("invalid")) {
+          setError("Incorrect email or password.");
+        } else { setError(err.message); }
+        setLoading(false); return;
       }
+      setStage("success");
+      setTimeout(() => onSignIn(email), 1000);
     }
+    setLoading(false);
   };
+
+  const handleForgot = async () => {
+    if (!validEmail) { setError("Enter your @exeter.ac.uk email first."); return; }
+    setLoading(true);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (err) { setError(err.message); }
+    else { alert("Password reset email sent to " + email + ". Check your inbox."); }
+    setLoading(false);
+  };
+
+  const LeftPanel = () => (
+    <div className="ink-bg" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+      <h1 className="serif" style={{ fontSize: "clamp(40px, 5vw, 80px)", fontStyle: "italic", fontWeight: 400, lineHeight: 0.95, letterSpacing: "-0.02em" }}>
+        University-only.<br />By design.
+      </h1>
+      <p style={{ fontSize: 17, lineHeight: 1.6, maxWidth: 400, color: "oklch(0.78 0.01 80)", marginTop: 24 }}>
+        Only <span style={{ color: "var(--accent)" }}>@exeter.ac.uk</span> addresses are accepted. Your email is verified before your account is activated.
+      </p>
+      <div style={{ marginTop: 40, display: "grid", gap: 14 }}>
+        {[["🔒","Secure accounts","Email verified, password protected"],["🎫","Verified tickets","AI checks every screenshot before listing"],["💷","Escrow protection","Money held safely until you are through the door"]].map(([icon, title, desc]) => (
+          <div key={title} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>{icon}</span>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: "var(--paper)" }}>{title}</div>
+              <div style={{ fontSize: 13, color: "oklch(0.65 0.01 80)" }}>{desc}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (stage === "verify") return (
+    <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <LeftPanel />
+      <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
+        <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Check your inbox.</h2>
+        <p style={{ color: "var(--ink-mute)", fontSize: 15, lineHeight: 1.6, marginBottom: 24 }}>
+          We sent a verification link to <b style={{ fontFamily: "var(--mono)" }}>{email}</b>. Click the link to activate your account, then come back here to sign in.
+        </p>
+        <div style={{ padding: "14px 16px", background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 13, color: "var(--ink-mute)", lineHeight: 1.6 }}>
+          Not arrived? Check your spam. Still nothing?{" "}
+          <span style={{ textDecoration: "underline", cursor: "pointer", color: "var(--ink)" }}
+            onClick={async () => { await supabase.auth.resend({ type: "signup", email }); alert("Verification email resent."); }}>
+            Resend it
+          </span>.
+        </div>
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 20, alignSelf: "flex-start" }} onClick={() => { setStage("form"); setTab("signin"); }}>
+          Back to sign in
+        </button>
+      </div>
+    </div>
+  );
+
+  if (stage === "success") return (
+    <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <LeftPanel />
+      <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+        <div style={{ display: "inline-block", padding: "4px 12px", background: "var(--accent)", color: "var(--accent-fg)", fontFamily: "var(--mono)", fontSize: 11, textTransform: "uppercase", marginBottom: 14 }}>● Signed in</div>
+        <h2 className="serif" style={{ fontSize: 48, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px", lineHeight: 1 }}>You are in.</h2>
+        <p style={{ color: "var(--ink-mute)" }}>Redirecting…</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-      <div className="ink-bg" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-        <div>
-          <h1 className="serif" style={{ fontSize: "clamp(48px, 6vw, 96px)", fontStyle: "italic", fontWeight: 400, lineHeight: 0.95, letterSpacing: "-0.02em" }}>University-only.<br />By design.</h1>
-          <p style={{ fontSize: 18, lineHeight: 1.5, maxWidth: 440, color: "oklch(0.78 0.01 80)", marginTop: 24 }}>We only let through accounts ending in <span style={{ color: "var(--accent)" }}>@exeter.ac.uk</span>. Keeps the marketplace small, real, and accountable.</p>
-        </div>
-      </div>
+      <LeftPanel />
       <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 520 }}>
-        {stage === "email" && (
-          <>
-            <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 24px" }}>What's your university email?</h2>
-            <input className="field" placeholder="ab1234@exeter.ac.uk" value={email} onChange={(e) => setEmail(e.target.value)} style={{ fontSize: 20, padding: "18px 16px" }} />
-            {email && !valid && <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }} className="shake">Must be a valid <b>@exeter.ac.uk</b> address.</div>}
-            <button className="btn btn-accent btn-lg" disabled={!valid} style={{ width: "100%", marginTop: 18, justifyContent: "center" }}
-                onClick={async () => {
-                  const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
-                  if (error) { alert(error.message); }
-                  else { setStage("code"); }
-                }}>
-                Send 6-digit code →
-              </button>
-            <div className="mono cap-sm" style={{ color: "var(--ink-mute)", marginTop: 14 }}>By continuing you agree to our terms · refund policy · escrow rules</div>
-          </>
-        )}
-        {stage === "code" && (
-          <>
-            <button className="btn btn-ghost btn-sm" onClick={() => setStage("email")} style={{ alignSelf: "flex-start", marginBottom: 18 }}>← back</button>
-            <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px" }}>Check your email.</h2>
-            <p style={{ color: "var(--ink-mute)", fontSize: 14, margin: "0 0 24px" }}>We sent a six-digit code to <b className="mono">{email}</b>.</p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 8 }}>
-              {code.map((v, i) => (
-                <input key={i} id={`c${i}`} value={v} onChange={(e) => handleCode(i, e.target.value)} className="field" style={{ height: 72, textAlign: "center", fontSize: 32, fontFamily: "var(--serif)", fontStyle: "italic" }} />
-              ))}
-            </div>
-            <ResendCodeButton email={email} />
-          </>
-        )}
-        {stage === "success" && (
-          <div className="fade-in">
-            <div style={{ display: "inline-block", padding: "4px 12px", background: "var(--accent)", border: "1px solid var(--ink)", fontFamily: "var(--mono)", fontSize: 11, textTransform: "uppercase" }}>● VERIFIED</div>
-            <h2 className="serif" style={{ fontSize: 48, fontStyle: "italic", fontWeight: 400, margin: "14px 0 8px", lineHeight: 1 }}>You're in.</h2>
-            <p style={{ color: "var(--ink-mute)" }}>Redirecting…</p>
+        <div style={{ display: "flex", gap: 0, marginBottom: 32, borderBottom: "1px solid var(--rule)" }}>
+          {[["signin","Sign in"],["signup","Create account"]].map(([id, label]) => (
+            <button key={id} onClick={() => { setTab(id); setError(""); }} style={{
+              all: "unset", cursor: "pointer", padding: "10px 20px", fontSize: 15, fontWeight: 600,
+              borderBottom: tab === id ? "2px solid var(--accent)" : "2px solid transparent",
+              color: tab === id ? "var(--ink)" : "var(--ink-mute)", marginBottom: "-1px",
+            }}>{label}</button>
+          ))}
+        </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 8 }}>University email</label>
+            <input className="field" type="email" placeholder="ab1234@exeter.ac.uk" value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(""); }} style={{ fontSize: 16 }} />
+            {email && !validEmail && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>Must be an @exeter.ac.uk address</div>}
           </div>
-        )}
+          <div>
+            <label style={{ fontSize: 12, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 8 }}>Password</label>
+            <div style={{ position: "relative" }}>
+              <input className="field" type={showPass ? "text" : "password"}
+                placeholder={tab === "signup" ? "Min. 8 characters" : "Your password"}
+                value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && validForm && handleSubmit()}
+                style={{ fontSize: 16, paddingRight: 56 }} />
+              <button onClick={() => setShowPass(!showPass)} style={{
+                all: "unset", cursor: "pointer", position: "absolute", right: 14, top: "50%",
+                transform: "translateY(-50%)", fontSize: 12, color: "var(--ink-mute)"
+              }}>{showPass ? "Hide" : "Show"}</button>
+            </div>
+            {tab === "signup" && password && !validPass && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>At least 8 characters</div>}
+          </div>
+          {tab === "signup" && (
+            <div>
+              <label style={{ fontSize: 12, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 8 }}>Confirm password</label>
+              <input className="field" type={showPass ? "text" : "password"} placeholder="Re-enter password"
+                value={confirm} onChange={(e) => { setConfirm(e.target.value); setError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && validForm && handleSubmit()}
+                style={{ fontSize: 16, borderColor: confirm && confirm !== password ? "var(--danger)" : undefined }} />
+              {confirm && confirm !== password && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>Passwords do not match</div>}
+            </div>
+          )}
+          {error && (
+            <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid var(--danger)", color: "var(--danger)", fontSize: 13, lineHeight: 1.5 }}>{error}</div>
+          )}
+          <button className="btn btn-accent btn-lg" disabled={!validForm || loading}
+            style={{ width: "100%", justifyContent: "center", marginTop: 4 }} onClick={handleSubmit}>
+            {loading
+              ? <><span className="spin" style={{ borderColor: "var(--accent-fg)", borderRightColor: "transparent" }}></span>{" "}{tab === "signup" ? "Creating account…" : "Signing in…"}</>
+              : tab === "signup" ? "Create account →" : "Sign in →"}
+          </button>
+          {tab === "signin" && (
+            <button onClick={handleForgot} style={{ all: "unset", cursor: "pointer", fontSize: 13, color: "var(--ink-mute)", textAlign: "center", textDecoration: "underline" }}>
+              Forgot password?
+            </button>
+          )}
+          <div className="mono cap-sm" style={{ color: "var(--ink-mute)", textAlign: "center", fontSize: 11 }}>
+            By continuing you agree to our terms · refund policy · escrow rules
+          </div>
+        </div>
       </div>
     </div>
   );
