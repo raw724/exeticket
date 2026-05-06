@@ -305,11 +305,10 @@ const DISPUTES = [
 
 const INFO_CONTENT = {
   escrow: { title:"How escrow works", body:[
-    ["01 — Listing","A seller uploads their original ticket screenshot. Our scanner matches it against the event registry — title, venue, date, time, barcode hash. If anything fails to match, the listing is rejected immediately."],
-    ["02 — Buyer pays","When you buy, your money goes to Exeticket — never directly to the seller. The listing locks for 30 minutes while the transfer settles."],
-    ["03 — Buyer pays","Funds go to Exeticket — never directly to the seller. The listing locks for 30 minutes while the transfer settles. Your payout as a seller is released 48 hours after the event ends."],
-    ["04 — Door check-in","Show your ticket screenshot at the door — this is the exact QR the seller uploaded. The seller receives their payout 48 hours after the event, once no disputes are raised."],
-    ["05 — If anything fails","Door scanner rejects you? Money refunded automatically within 24 hours. Seller flagged. No questions, no DMs."],
+    ["01 — Listing","A seller uploads their original ticket screenshot. Our AI scans it securely — reading the event name, venue, date, doors time and barcode against the event registry. If anything doesn't match, the listing is rejected immediately."],
+    ["02 — Buyer pays","When you buy, your money goes to Exeticket — never directly to the seller. The listing locks while the transfer settles. The seller's payout is released 48 hours after the event ends, once no disputes have been raised."],
+    ["03 — Door check-in","Show the ticket screenshot at the door — this is the exact QR the seller uploaded. No re-issuing, no invalidation. Just show what you bought."],
+    ["04 — If anything fails","Something goes wrong at the door? Open a dispute from your Wallet and our team will investigate. Refunds are issued after review — usually within 24 hours."],
   ]},
   refunds: { title:"Refund policy", body:[
     ["Automatic refunds","If you cannot enter the venue using your Exeticket QR, you are refunded in full (including the 99p fee) within 24 hours. We pay the fee out of pocket."],
@@ -330,10 +329,10 @@ const INFO_CONTENT = {
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
   about: { title:"About Exeticket", body:[
-    ["Built in Exeter","Two final-year Computer Science students started Exeticket after watching a friend lose £85 in a Facebook Marketplace ticket scam in 2024."],
-    ["Why a flat fee","Percentage fees punish higher-priced tickets. 99p is just enough to cover Stripe, SMS verification, and a tiny operating margin. Nothing more."],
-    ["Where we run","Exeter only, for now. We turn down everyone who asks us to expand. Local trust is the whole point."],
-    ["Funded by","Seed-funded by SETsquared Exeter. We are not VC-backed and we are not selling to a bigger ticketing company."],
+    ["Built in Exeter","Exeticket was started by a first-year Computer Science student at Exeter after watching a friend lose £85 in a Facebook Marketplace ticket scam in 2024. Built from a dorm room, for Exeter students who deserve better than group chat ticket roulette."],
+    ["Why a flat fee","Percentage fees punish people selling higher-priced tickets. 99p covers what it costs to run the platform — nothing more. Simple, fair, fixed."],
+    ["Where we run","Exeter only. The whole point is local trust — keeping it small keeps it accountable. No plans to expand."],
+    ["Funded by","100% self-funded. No investors, no VC money, no corporate backing. Built and paid for out of pocket."],
   ]},
   terms: { title:"Terms & privacy", body:[
     ["Eligibility","You must be a current Exeter student with a valid @exeter.ac.uk address. Accounts found to be otherwise are removed without refund."],
@@ -404,13 +403,16 @@ function Logo({ onClick, light }) {
 }
 
 function Nav({ route, go, user }) {
-  const items = [
-    { id: "home", label: "Home" },
+  const baseItems = [
+    { id: "home",   label: "Home" },
     { id: "browse", label: "Browse" },
-    { id: "sell", label: "Sell" },
+    { id: "sell",   label: "Sell" },
     { id: "wallet", label: "Wallet" },
-    { id: "admin", label: "Admin" },
   ];
+  // Only show Admin tab to users with admin role
+  const items = user?.role === "admin"
+    ? [...baseItems, { id: "admin", label: "Admin" }]
+    : baseItems;
   const [menuOpen, setMenuOpen] = useState(false);
   const wrap = useRef(null);
   useEffect(() => {
@@ -531,7 +533,17 @@ function EventCard({ event, onOpen, accent = false, large = false }) {
       onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
       onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
     >
-      <div className="ph-img" data-label={event.img} style={{ borderBottom: `1px solid ${accent ? "var(--paper)" : "var(--ink)"}`, position: "relative" }}>
+      <div style={{ borderBottom: `1px solid ${accent ? "var(--paper)" : "var(--ink)"}`, position: "relative", overflow: "hidden", background: accent ? "var(--ink)" : "var(--paper-2)" }}>
+        {event.img && (event.img.startsWith("http") || event.img.startsWith("/")) ? (
+          <img
+            src={event.img}
+            alt={event.title}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block", minHeight: large ? 320 : 200 }}
+            onError={(e) => { e.target.style.display = "none"; e.target.parentNode.querySelector(".ph-img").style.display = "block"; }}
+          />
+        ) : null}
+        <div className="ph-img" data-label={event.title}
+          style={{ display: (event.img && (event.img.startsWith("http") || event.img.startsWith("/"))) ? "none" : "block", height: "100%", minHeight: large ? 320 : 200 }}></div>
         <div style={{ position: "absolute", top: 12, right: 12 }}>
           <span className="badge badge-accent"><Countdown iso={event.iso} compact /></span>
         </div>
@@ -618,8 +630,13 @@ function HoloTicket({ event, listing, status = "preview" }) {
   );
 }
 
-function PriceBreakdown({ price, mode = "buy" }) {
-  const total = price + FEE;
+const VOUCHER_CODES = { "NOFEE": 0.99, "nofee": 0.99 };
+
+function PriceBreakdown({ price, mode = "buy", voucher = "" }) {
+  const discount = VOUCHER_CODES[voucher.trim()] || 0;
+  const fee      = Math.max(0, FEE - discount);
+  const total    = price + fee;
+
   if (mode === "sell") return (
     <div style={{ border: "1px solid var(--ink)", padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
@@ -637,6 +654,7 @@ function PriceBreakdown({ price, mode = "buy" }) {
       </div>
     </div>
   );
+
   return (
     <div style={{ border: "1px solid var(--ink)", padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
@@ -645,8 +663,14 @@ function PriceBreakdown({ price, mode = "buy" }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
         <span className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>Exeticket fee</span>
-        <span className="mono">+£0.99</span>
+        <span className="mono">{fee === 0 ? <span style={{ color: "var(--ok)" }}>FREE</span> : `+£${fee.toFixed(2)}`}</span>
       </div>
+      {discount > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
+          <span className="mono cap-sm" style={{ color: "var(--ok)" }}>✓ Voucher applied ({voucher.trim().toUpperCase()})</span>
+          <span className="mono" style={{ color: "var(--ok)" }}>−£{discount.toFixed(2)}</span>
+        </div>
+      )}
       <hr className="rule-ink" style={{ margin: "12px 0" }} />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <span className="cap mono">You pay</span>
@@ -759,6 +783,143 @@ function LiveFeed() {
   );
 }
 
+/* ─── LIVE STATS BAR ─────────────────────────────────────────────────────────── */
+function AnimatedNumber({ value, prefix = "", suffix = "" }) {
+  const [display, setDisplay] = useState(value);
+  const prevRef = useRef(value);
+
+  useEffect(() => {
+    if (value === prevRef.current) return;
+    const start = prevRef.current;
+    const end   = value;
+    const isNum = typeof end === "number";
+    if (!isNum) { setDisplay(end); prevRef.current = end; return; }
+    const diff     = end - start;
+    const duration = 800;
+    const startTs  = performance.now();
+    const tick = (now) => {
+      const pct = Math.min(1, (now - startTs) / duration);
+      const ease = 1 - Math.pow(1 - pct, 3); // ease-out cubic
+      setDisplay(Math.round(start + diff * ease));
+      if (pct < 1) requestAnimationFrame(tick);
+      else { setDisplay(end); prevRef.current = end; }
+    };
+    requestAnimationFrame(tick);
+  }, [value]);
+
+  return <span>{prefix}{typeof display === "number" ? display.toLocaleString() : display}{suffix}</span>;
+}
+
+function LiveStatsBar() {
+  const [stats, setStats] = useState({
+    listings:  47,
+    students:  2194,
+    scanRate:  99.4,
+  });
+  const [pulse, setPulse] = useState(false);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      // Fetch live listing count from DB
+      const [listingsRes, usersRes] = await Promise.all([
+        supabase.from("listings").select("id", { count: "exact", head: true }).eq("status", "available"),
+        supabase.from("users").select("id", { count: "exact", head: true }),
+      ]);
+      const newStats = {
+        listings: listingsRes.count ?? stats.listings,
+        students:  usersRes.count   ?? stats.students,
+        scanRate:  99.4, // pulled from transactions table in future
+      };
+      // Only update + pulse if something changed
+      if (newStats.listings !== stats.listings || newStats.students !== stats.students) {
+        setStats(newStats);
+        setPulse(true);
+        setTimeout(() => setPulse(false), 600);
+      }
+    } catch {
+      // Keep showing last known values if DB not reachable
+    }
+  }, [stats]);
+
+  // Fetch on mount
+  useEffect(() => { fetchStats(); }, []);
+
+  // Refresh every 30 seconds
+  useEffect(() => {
+    const id = setInterval(fetchStats, 30000);
+    return () => clearInterval(id);
+  }, [fetchStats]);
+
+  // Supabase Realtime — update instantly when a listing is added or removed
+  useEffect(() => {
+    const channel = supabase
+      .channel("stats-listings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, () => {
+        fetchStats();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "users" }, () => {
+        fetchStats();
+      })
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [fetchStats]);
+
+  const items = [
+    {
+      value: <AnimatedNumber value={stats.listings} />,
+      label: "Live listings right now",
+      live: true,
+    },
+    {
+      value: <AnimatedNumber value={stats.students} />,
+      label: "Verified students",
+      live: false,
+    },
+    {
+      value: <AnimatedNumber value={99.4} suffix="%" />,
+      label: "Door scan success rate",
+      live: false,
+    },
+    {
+      value: "99p",
+      label: "Flat fee. Always.",
+      live: false,
+    },
+  ];
+
+  return (
+    <section className="section">
+      <div className="container" style={{ padding: "48px 32px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderLeft: "1px solid var(--ink)" }}>
+          {items.map((s, i) => (
+            <div key={i} style={{
+              borderRight: "1px solid var(--ink)", padding: "8px 24px",
+              transition: "background .3s",
+              background: pulse && s.live ? "oklch(0.96 0.05 150)" : "transparent",
+            }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                <div className="serif" style={{ fontSize: 48, lineHeight: 1, fontStyle: "italic", fontWeight: 400 }}>
+                  {s.value}
+                </div>
+                {s.live && (
+                  <span style={{
+                    width: 7, height: 7, borderRadius: "50%",
+                    background: "var(--accent)", display: "inline-block",
+                    boxShadow: "0 0 0 0 var(--accent)",
+                    animation: "pulse 2s ease-out infinite",
+                    flexShrink: 0, marginBottom: 4,
+                  }} />
+                )}
+              </div>
+              <div className="cap mono" style={{ marginTop: 10, color: "var(--ink-mute)" }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function HomeScreen({ go, setSelectedEvent, openInfo }) {
   const [events, setEvents] = useState(EVENTS);
 
@@ -784,7 +945,7 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
               <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: "2px 14px", display: "inline-block", marginTop: 8, borderRadius: 4 }}>safe.</span>
             </h1>
             <p style={{ fontSize: 18, lineHeight: 1.5, maxWidth: 520, marginTop: 32, color: "var(--ink-mute)" }}>
-              The Exeter student ticket exchange. Sellers upload a screenshot, we verify it against the event, and the ticket sits in escrow until the buyer is actually through the door. One flat fee.
+              The Exeter student ticket exchange. AI scans every ticket screenshot to verify it's genuine before it goes live — checking the event, venue, date and QR code. Funds sit in escrow until you're through the door. One flat 99p fee.
             </p>
             <div style={{ display: "flex", gap: 12, marginTop: 32, flexWrap: "wrap", alignItems: "center" }}>
               <button className="btn btn-accent btn-lg" onClick={() => go("browse")}>Browse listings <span>→</span></button>
@@ -835,23 +996,7 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
         </div>
       </section>
 
-      <section className="section">
-        <div className="container" style={{ padding: "48px 32px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderLeft: "1px solid var(--ink)" }}>
-            {[
-              { k: "47", v: "Live listings tonight" },
-              { k: "2,194", v: "Verified students" },
-              { k: "99.4%", v: "Door scan success rate" },
-              { k: "99p", v: "Flat fee. Always." },
-            ].map((s, i) => (
-              <div key={i} style={{ borderRight: "1px solid var(--ink)", padding: "8px 24px" }}>
-                <div className="serif" style={{ fontSize: 48, lineHeight: 1, fontStyle: "italic", fontWeight: 400 }}>{s.k}</div>
-                <div className="cap mono" style={{ marginTop: 10, color: "var(--ink-mute)" }}>{s.v}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <LiveStatsBar />
 
       <Footer go={go} openInfo={openInfo} />
     </div>
@@ -1148,6 +1293,53 @@ function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellE
   );
 }
 
+/* ─── VOUCHER INPUT ──────────────────────────────────────────────────────────── */
+function VoucherInput({ onApply }) {
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | valid | invalid
+
+  const handleApply = () => {
+    const trimmed = code.trim().toUpperCase();
+    if (VOUCHER_CODES[trimmed] || VOUCHER_CODES[trimmed.toLowerCase()]) {
+      setStatus("valid");
+      onApply(trimmed);
+    } else {
+      setStatus("invalid");
+      onApply("");
+      setTimeout(() => setStatus("idle"), 2000);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          className="field"
+          placeholder="Voucher code"
+          value={code}
+          onChange={(e) => { setCode(e.target.value); setStatus("idle"); if (!e.target.value) onApply(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleApply()}
+          style={{ flex: 1, fontSize: 14, padding: "10px 14px",
+            borderColor: status === "valid" ? "var(--ok)" : status === "invalid" ? "var(--danger)" : "var(--rule)" }}
+        />
+        <button className="btn btn-ghost btn-sm" onClick={handleApply} style={{ whiteSpace: "nowrap" }}>
+          Apply
+        </button>
+      </div>
+      {status === "valid" && (
+        <div style={{ fontSize: 12, color: "var(--ok)", marginTop: 6, fontWeight: 500 }}>
+          ✓ Voucher applied — fee waived
+        </div>
+      )}
+      {status === "invalid" && (
+        <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 6 }}>
+          Invalid voucher code
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── BUY SCREEN ─────────────────────────────────────────────────────────────── */
 function StripeCheckoutForm({ onSuccess, listing }) {
   const stripe   = useStripe();
@@ -1198,6 +1390,7 @@ function StripeCheckoutForm({ onSuccess, listing }) {
 function BuyScreen({ event, listing, go }) {
   const [step, setStep] = useState(0);
   const [clientSecret, setClientSecret] = useState(null);
+  const [voucher, setVoucher] = useState("");
   const steps = ["Review", "Pay", "Escrow", "Door"];
 
   useEffect(() => {
@@ -1266,12 +1459,12 @@ function BuyScreen({ event, listing, go }) {
                 <div className="serif" style={{ fontSize: 24, lineHeight: 1.2 }}>{event.title}</div>
                 <div className="mono" style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 6 }}>{event.date} · {event.venue} · {listing.type}</div>
               </div>
-              <PriceBreakdown price={listing.price} mode="buy" />
-              <div style={{ marginTop: 14 }}><FlatFeeBadge /></div>
+              <VoucherInput onApply={setVoucher} />
+              <PriceBreakdown price={listing.price} mode="buy" voucher={voucher} />
               <button className="btn btn-accent btn-lg" style={{ width: "100%", marginTop: 18, justifyContent: "center" }} onClick={() => setStep(1)}>
                 Continue to payment →
               </button>
-              <div className="mono cap-sm" style={{ color: "var(--ink-mute)", textAlign: "center", marginTop: 10 }}>Seller receives full listing price · 99p fee charged to you</div>
+              <div className="mono cap-sm" style={{ color: "var(--ink-mute)", textAlign: "center", marginTop: 10 }}>Seller receives full listing price · fee charged to you</div>
             </>
           )}
           {step === 1 && clientSecret && (
@@ -2314,6 +2507,63 @@ function AlertsScreen({ go }) {
   );
 }
 
+/* ─── RESEND CODE BUTTON ─────────────────────────────────────────────────── */
+function ResendCodeButton({ email }) {
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  const [countdown, setCountdown] = useState(0);
+
+  const handleResend = async () => {
+    setStatus("sending");
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false }
+    });
+    if (error) {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    } else {
+      setStatus("sent");
+      setCountdown(60); // 60 second cooldown before they can resend again
+    }
+  };
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown(c => {
+      if (c <= 1) { setStatus("idle"); return 0; }
+      return c - 1;
+    }), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
+
+  return (
+    <div style={{ marginTop: 14, fontSize: 13, color: "var(--ink-mute)", display: "flex", alignItems: "center", gap: 6 }}>
+      No code?
+      {status === "idle" && (
+        <span onClick={handleResend} style={{ textDecoration: "underline", cursor: "pointer", color: "var(--ink)", fontWeight: 500 }}>
+          Resend
+        </span>
+      )}
+      {status === "sending" && (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <span className="spin" style={{ width: 10, height: 10 }}></span> Sending…
+        </span>
+      )}
+      {status === "sent" && (
+        <span style={{ color: "var(--ok)", fontWeight: 500 }}>
+          ✓ Sent — check your inbox · resend in {countdown}s
+        </span>
+      )}
+      {status === "error" && (
+        <span style={{ color: "var(--danger)" }}>
+          Failed to send — try again
+        </span>
+      )}
+    </div>
+  );
+}
+
 /* ─── AUTH SCREEN ────────────────────────────────────────────────────────────── */
 function AuthScreen({ go, onSignIn }) {
   const [email, setEmail] = useState("");
@@ -2341,12 +2591,10 @@ function AuthScreen({ go, onSignIn }) {
   return (
     <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
       <div className="ink-bg" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-        <div className="cap mono" style={{ color: "var(--accent)" }}>§ Sign in</div>
         <div>
           <h1 className="serif" style={{ fontSize: "clamp(48px, 6vw, 96px)", fontStyle: "italic", fontWeight: 400, lineHeight: 0.95, letterSpacing: "-0.02em" }}>University-only.<br />By design.</h1>
           <p style={{ fontSize: 18, lineHeight: 1.5, maxWidth: 440, color: "oklch(0.78 0.01 80)", marginTop: 24 }}>We only let through accounts ending in <span style={{ color: "var(--accent)" }}>@exeter.ac.uk</span>. Keeps the marketplace small, real, and accountable.</p>
         </div>
-        <div className="mono cap-sm" style={{ color: "oklch(0.6 0.01 80)" }}>Magic-link auth · No passwords · Session 14 days</div>
       </div>
       <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 520 }}>
         {stage === "email" && (
@@ -2375,7 +2623,7 @@ function AuthScreen({ go, onSignIn }) {
                 <input key={i} id={`c${i}`} value={v} onChange={(e) => handleCode(i, e.target.value)} className="field" style={{ height: 72, textAlign: "center", fontSize: 32, fontFamily: "var(--serif)", fontStyle: "italic" }} />
               ))}
             </div>
-            <div className="mono cap-sm" style={{ color: "var(--ink-mute)", marginTop: 14 }}>No code? <span style={{ textDecoration: "underline", cursor: "pointer" }}>Resend</span> · expires in 09:42</div>
+            <ResendCodeButton email={email} />
           </>
         )}
         {stage === "success" && (
@@ -2640,7 +2888,7 @@ export default function App() {
       {route === "alerts" && <AlertsScreen go={go} />}
       {route === "account" && <AccountScreen go={go} user={user} onSignOut={async () => { await supabase.auth.signOut(); setUser(null); go("auth"); }} />}
       {route === "auth" && <AuthScreen go={go} onSignIn={(em) => { setUser({ initials: em.slice(0, 2).toUpperCase(), handle: em.split("@")[0] }); }} />}
-      {route === "admin" && <AdminScreen go={go} />}
+      {route === "admin" && (user?.role === "admin" ? <AdminScreen go={go} /> : (() => { go("home"); return null; })())}
       <InfoModal kind={infoModal} onClose={() => setInfoModal(null)} />
     </>
   );
