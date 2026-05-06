@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/release-escrow",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/price-alerts?action=check",
+      "schedule": "0 10 * * *"
+    }
+  ]
+}

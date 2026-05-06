@@ -1,4 +1,16 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from "react";
+import { createClient } from '@supabase/supabase-js';
+import { loadStripe } from '@stripe/stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+
+// ── Supabase client (reads from Vite env vars) ────────────────────────────────
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL || '',
+  import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+);
+
+// ── Stripe (reads publishable key from env) ───────────────────────────────────
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 /* ─── DESIGN TOKENS ─────────────────────────────────────────────────────────── */
 const CSS = `
@@ -742,8 +754,17 @@ function LiveFeed() {
 }
 
 function HomeScreen({ go, setSelectedEvent, openInfo }) {
-  const featured = EVENTS[0];
-  const more = EVENTS.slice(1);
+  const [events, setEvents] = useState(EVENTS);
+
+  useEffect(() => {
+    fetch('/api/events')
+      .then(r => r.json())
+      .then(data => { if (data.events?.length > 0) setEvents(data.events); })
+      .catch(() => {}); // keep mock data if API not deployed yet
+  }, []);
+
+  const featured = events[0];
+  const more = events.slice(1);
   const openEvent = (ev) => { setSelectedEvent(ev); go("detail"); };
 
   return (
@@ -835,13 +856,21 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
 function BrowseScreen({ go, setSelectedEvent, openInfo }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("time");
+  const [events, setEvents] = useState(EVENTS);
+
+  useEffect(() => {
+    fetch('/api/events')
+      .then(r => r.json())
+      .then(data => { if (data.events?.length > 0) setEvents(data.events); })
+      .catch(() => {});
+  }, []);
 
   const rows = useMemo(() => {
-    return EVENTS.map((ev) => {
-      const lst = LISTINGS.filter((l) => l.eventId === ev.id);
+    return events.map((ev) => {
+      const lst = LISTINGS.filter((l) => l.eventId === ev.id || l.event_id === ev.id);
       return { ev, listings: lst, floor: lst.length ? Math.min(...lst.map((l) => l.price)) : ev.floor };
     }).filter((r) => {
-      if (q && !`${r.ev.title} ${r.ev.venue} ${r.ev.tag}`.toLowerCase().includes(q.toLowerCase())) return false;
+      if (q && !`${r.ev.title} ${r.ev.venue} ${r.ev.tag || ''}`.toLowerCase().includes(q.toLowerCase())) return false;
       return true;
     }).sort((a, b) => {
       if (sort === "price-asc") return a.floor - b.floor;
@@ -849,7 +878,7 @@ function BrowseScreen({ go, setSelectedEvent, openInfo }) {
       if (sort === "listings") return b.listings.length - a.listings.length;
       return new Date(a.ev.iso) - new Date(b.ev.iso);
     });
-  }, [q, sort]);
+  }, [q, sort, events]);
 
   return (
     <div className="fade-in">
@@ -978,7 +1007,22 @@ function OfferModal({ listing, event, onClose }) {
 
 function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellEvent }) {
   const [offerListing, setOfferListing] = useState(null);
-  const rawListings = LISTINGS.filter((l) => l.eventId === event.id);
+  const [rawListings, setRawListings] = useState(
+    LISTINGS.filter(l => l.eventId === event.id || l.event_id === event.id)
+  );
+  const [listingsLoading, setListingsLoading] = useState(true);
+
+  useEffect(() => {
+    setListingsLoading(true);
+    fetch(`/api/listings?eventId=${event.id}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.listings?.length > 0) setRawListings(data.listings);
+        setListingsLoading(false);
+      })
+      .catch(() => setListingsLoading(false));
+  }, [event.id]);
+
   // Sort purely by price — lowest first
   const sorted = [...rawListings].sort((a, b) => a.price - b.price);
   const cheapest = sorted[0] || null;
@@ -1099,11 +1143,77 @@ function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellE
 }
 
 /* ─── BUY SCREEN ─────────────────────────────────────────────────────────────── */
+function StripeCheckoutForm({ onSuccess, listing }) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setLoading(true);
+    setError(null);
+    const { error: stripeError } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    });
+    if (stripeError) {
+      setError(stripeError.message);
+      setLoading(false);
+    } else {
+      onSuccess();
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div style={{ marginBottom: 20 }}>
+        <PaymentElement />
+      </div>
+      {error && (
+        <div style={{ color: 'var(--danger)', fontSize: 13, marginBottom: 14, padding: '10px 12px', border: '1px solid var(--danger)' }}>
+          {error}
+        </div>
+      )}
+      <button className="btn btn-accent btn-lg" type="submit" disabled={!stripe || loading}
+        style={{ width: '100%', justifyContent: 'center' }}>
+        {loading
+          ? <><span className="spin" style={{ borderColor: 'var(--accent-fg)', borderRightColor: 'transparent' }}></span> Processing…</>
+          : `Pay £${listing ? (listing.price + 0.99).toFixed(2) : ''} →`}
+      </button>
+      <div style={{ fontSize: 12, color: 'var(--ink-mute)', textAlign: 'center', marginTop: 10 }}>
+        Secured by Stripe · Apple Pay & Google Pay accepted
+      </div>
+    </form>
+  );
+}
+
 function BuyScreen({ event, listing, go }) {
   const [step, setStep] = useState(0);
+  const [clientSecret, setClientSecret] = useState(null);
   const steps = ["Review", "Pay", "Escrow", "Door"];
+
   useEffect(() => {
-    if (step === 1) { const t = setTimeout(() => setStep(2), 2200); return () => clearTimeout(t); }
+    if (step === 1 && !clientSecret) {
+      const session = supabase.auth.session ? supabase.auth.session() : null;
+      const token = session?.access_token || '';
+      fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          listingId:    listing.id,
+          listingPrice: listing.price,
+          eventId:      event.id,
+          eventTitle:   event.title,
+          sellerId:     listing.sellerId || listing.seller_id || '',
+          buyerEmail:   supabase.auth.user?.()?.email || '',
+        }),
+      })
+        .then(r => r.json())
+        .then(data => { if (data.clientSecret) setClientSecret(data.clientSecret); })
+        .catch(err => console.error('Payment setup error:', err));
+    }
   }, [step]);
 
   return (
@@ -1153,16 +1263,21 @@ function BuyScreen({ event, listing, go }) {
               <PriceBreakdown price={listing.price} mode="buy" />
               <div style={{ marginTop: 14 }}><FlatFeeBadge /></div>
               <button className="btn btn-accent btn-lg" style={{ width: "100%", marginTop: 18, justifyContent: "center" }} onClick={() => setStep(1)}>
-                Pay {fmt(listing.price + 0.99)} into escrow →
+                Continue to payment →
               </button>
               <div className="mono cap-sm" style={{ color: "var(--ink-mute)", textAlign: "center", marginTop: 10 }}>Seller receives full listing price · 99p fee charged to you</div>
             </>
           )}
-          {step === 1 && (
+          {step === 1 && clientSecret && (
+            <Elements stripe={stripePromise} options={{ clientSecret }}>
+              <StripeCheckoutForm onSuccess={() => setStep(2)} listing={listing} />
+            </Elements>
+          )}
+          {step === 1 && !clientSecret && (
             <div style={{ textAlign: "center", padding: "80px 24px", border: "1px solid var(--ink)" }}>
               <span className="spin" style={{ width: 32, height: 32, borderWidth: 2 }}></span>
-              <div className="serif" style={{ fontSize: 24, marginTop: 20, fontStyle: "italic" }}>Securing the ticket…</div>
-              <div className="cap mono" style={{ color: "var(--ink-mute)", marginTop: 8 }}>Locking listing · Verifying funds · Issuing escrow</div>
+              <div style={{ fontSize: 16, fontWeight: 500, marginTop: 20 }}>Preparing checkout…</div>
+              <div className="cap mono" style={{ color: "var(--ink-mute)", marginTop: 8 }}>Setting up secure payment</div>
             </div>
           )}
           {step === 2 && (
@@ -1187,6 +1302,8 @@ function SellScreen({ go, prefillEvent }) {
   const [step, setStep] = useState(prefillEvent ? 1 : 0);
   const [event, setEvent] = useState(prefillEvent || null);
   const [price, setPrice] = useState("");
+  const [uploadedFile, setUploadedFile] = useState(null);  // real File object from upload
+  const [screenshotUrl, setScreenshotUrl] = useState('');   // Supabase Storage URL after upload
   const [sellShowAddEvent, setSellShowAddEvent] = useState(false);
   const steps = ["Event", "Upload", "Verify", "Price", "Live"];
 
@@ -1223,9 +1340,20 @@ function SellScreen({ go, prefillEvent }) {
       <div style={{ marginTop: 32, display: "grid", gridTemplateColumns: step >= 1 ? "1.2fr 1fr" : "1fr", gap: 48, alignItems: "start" }}>
         <div>
           {step === 0 && <SellPickEvent onPick={(ev) => { setEvent(ev); setStep(1); }} />}
-          {step === 1 && <SellUploadStep event={event} onDone={() => setStep(2)} onBack={() => setStep(0)} />}
-          {step === 2 && <SellVerifyStep event={event} onDone={() => setStep(3)} />}
-          {step === 3 && <SellPriceStep event={event} price={price} setPrice={setPrice} onDone={() => setStep(4)} />}
+          {step === 1 && <SellUploadStep event={event} onDone={(file, url) => { setUploadedFile(file); setScreenshotUrl(url || ''); setStep(2); }} onBack={() => setStep(0)} />}
+          {step === 2 && <SellVerifyStep event={event} uploadedFile={uploadedFile} onDone={() => setStep(3)} onFail={() => setStep(1)} />}
+          {step === 3 && <SellPriceStep event={event} price={price} setPrice={setPrice} onDone={async () => {
+        const session = supabase.auth.session ? supabase.auth.session() : null;
+        const token = session?.access_token;
+        if (token) {
+          await fetch('/api/listings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ eventId: event.id, price: parseFloat(price), screenshotUrl }),
+          }).catch(() => {}); // continue even if API not deployed
+        }
+        setStep(4);
+      }} />}
           {step === 4 && <SellLiveStep event={event} price={price} go={go} />}
         </div>
         {step >= 1 && event && (
@@ -1508,93 +1636,231 @@ function AddEventModal({ onClose, onAdd }) {
 
 function SellUploadStep({ event, onDone, onBack }) {
   const [drag, setDrag] = useState(false);
-  const [uploaded, setUploaded] = useState(false);
+  const [file, setFile] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const handleFile = (f) => {
+    if (!f) return;
+    const ok = ["image/png","image/jpeg","image/heic","image/webp"].includes(f.type) || f.name.match(/\.(png|jpg|jpeg|heic|webp)$/i);
+    if (!ok) { alert("Please upload a PNG, JPG or HEIC image."); return; }
+    if (f.size > 10 * 1024 * 1024) { alert("File must be under 10MB."); return; }
+    setFile(f);
+  };
+
+  const handleDrop = (e) => { e.preventDefault(); setDrag(false); handleFile(e.dataTransfer.files[0]); };
+
   return (
     <div>
       <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px" }}>Upload your screenshot</h2>
-      <p style={{ color: "var(--ink-mute)", fontSize: 14, margin: "0 0 18px" }}>PNG or JPG of the original ticket from Fatsoma, Skiddle, DICE, etc. We'll OCR-verify it against <b>{event.title}</b>.</p>
+      <p style={{ color: "var(--ink-mute)", fontSize: 14, margin: "0 0 18px" }}>
+        PNG or JPG of the original ticket from Fatsoma or Fixr. Make sure the <b>QR code is fully visible</b> — our AI will check everything matches <b>{event.title}</b>.
+      </p>
       <div
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); setUploaded(true); }}
-        onClick={() => setUploaded(true)}
+        onDrop={handleDrop}
+        onClick={() => !file && fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${drag ? "var(--accent-deep)" : "var(--ink)"}`,
-          padding: "72px 24px", textAlign: "center",
-          background: drag ? "oklch(0.95 0.1 110 / 0.4)" : uploaded ? "var(--paper-2)" : "var(--paper)",
-          cursor: "pointer", position: "relative"
+          border: `2px dashed ${drag ? "var(--accent-deep)" : file ? "var(--accent)" : "var(--ink)"}`,
+          padding: "56px 24px", textAlign: "center",
+          background: drag ? "oklch(0.95 0.1 110 / 0.4)" : file ? "var(--accent-soft)" : "var(--paper)",
+          cursor: file ? "default" : "pointer", position: "relative", transition: "all .2s"
         }}
       >
-        {!uploaded ? (
+        <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/heic,image/webp,.heic" style={{ display:"none" }} onChange={(e) => handleFile(e.target.files[0])} />
+        {!file ? (
           <>
-            <div className="mono cap" style={{ color: "var(--ink-mute)" }}>Drop or click</div>
-            <div className="serif" style={{ fontSize: 32, fontStyle: "italic", margin: "12px 0", fontWeight: 400 }}>Drag your ticket screenshot here.</div>
-            <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>PNG · JPG · HEIC · max 10MB</div>
+            <div style={{ fontSize: 36, marginBottom: 10 }}>📸</div>
+            <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6 }}>Drop your ticket screenshot here</div>
+            <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>PNG · JPG · HEIC · max 10MB · QR code must be visible</div>
           </>
         ) : (
           <div className="fade-in">
-            <div style={{ display: "inline-block", padding: "10px 14px", border: "1px solid var(--ink)", background: "var(--paper)", fontFamily: "var(--mono)", fontSize: 12 }}>
-              📎 ticket-{event.id}-{Math.floor(Math.random() * 9999)}.png · 612 KB · uploaded
+            {/* Preview thumbnail */}
+            <img src={URL.createObjectURL(file)} alt="ticket preview"
+              style={{ maxHeight: 220, maxWidth: "100%", border: "1px solid var(--rule)", borderRadius: 4, marginBottom: 14, objectFit: "contain" }} />
+            <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-mute)", marginBottom: 14 }}>
+              📎 {file.name} · {(file.size / 1024).toFixed(0)} KB
             </div>
-            <div style={{ marginTop: 18, display: "flex", gap: 12, justifyContent: "center" }}>
-              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setUploaded(false); }}>Replace</button>
-              <button className="btn btn-accent btn-sm" onClick={(e) => { e.stopPropagation(); onDone(); }}>Run verification →</button>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+              <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); setFile(null); fileInputRef.current.value=""; }}>Replace</button>
+              <button className="btn btn-accent btn-sm" onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  const filePath = `screenshots/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+                  const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('ticket-screenshots')
+                    .upload(filePath, file, { cacheControl: '3600', upsert: false });
+                  if (uploadError) throw uploadError;
+                  const { data: urlData } = await supabase.storage
+                    .from('ticket-screenshots')
+                    .createSignedUrl(filePath, 60 * 60 * 24 * 7); // 7 day signed URL
+                  onDone(file, urlData?.signedUrl || '');
+                } catch (err) {
+                  // If storage not configured yet, proceed without URL (dev mode)
+                  console.warn('Storage upload skipped:', err.message);
+                  onDone(file, '');
+                }
+              }}>Run AI verification →</button>
             </div>
           </div>
         )}
+      </div>
+      <div style={{ marginTop: 12, padding: "10px 14px", background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 13, color: "var(--ink-mute)", lineHeight: 1.5 }}>
+        ⚠ The QR code must be <b>fully visible and unobstructed</b> in the screenshot. Cropped, blurred or screenshot-of-screenshot images will be rejected.
       </div>
       <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ marginTop: 14 }}>← Pick a different event</button>
     </div>
   );
 }
 
-function SellVerifyStep({ event, onDone }) {
-  const fields = [
-    { k: "Event title", v: event.title, ms: 700 },
-    { k: "Venue", v: event.venue, ms: 1100 },
-    { k: "Date", v: event.date, ms: 1500 },
-    { k: "Doors time", v: event.door, ms: 1900 },
-    { k: "Barcode hash", v: "EXT-7F4A2-OK", ms: 2400 },
-    { k: "Original platform", v: "Fatsoma · authentic", ms: 2900 },
-  ];
-  const [done, setDone] = useState(0);
+function SellVerifyStep({ event, uploadedFile, onDone, onFail }) {
+  // status: 'checking' | 'pass' | 'fail'
+  const [status, setStatus] = useState("checking");
+  const [checks, setChecks] = useState([
+    { k: "QR code visible & scannable", v: null, result: null },
+    { k: "Event name",                  v: event.title, result: null },
+    { k: "Venue",                       v: event.venue, result: null },
+    { k: "Date",                        v: event.date,  result: null },
+    { k: "Doors time",                  v: event.door,  result: null },
+  ]);
+  const [failReason, setFailReason] = useState("");
+  const [previewUrl] = useState(() => uploadedFile ? URL.createObjectURL(uploadedFile) : null);
+
   useEffect(() => {
-    fields.forEach((f, i) => { setTimeout(() => setDone(i + 1), f.ms); });
-    const t = setTimeout(() => onDone(), 3700);
-    return () => clearTimeout(t);
-  }, []);
+    if (!uploadedFile) return;
+
+    const run = async () => {
+      try {
+        // Convert file to base64
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(uploadedFile);
+        });
+
+        const res = await fetch("/api/verify-ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imageBase64: base64,
+            imageMimeType: uploadedFile.type || "image/jpeg",
+            event: {
+              title: event.title,
+              venue: event.venue,
+              date:  event.date,
+              door:  event.door,
+            }
+          })
+        });
+
+        if (!res.ok) throw new Error("Verification service error: " + res.status);
+        const data = await res.json();
+
+        // data.checks = [{ key, found, match, detail }]
+        // data.pass = true | false
+        // data.failReason = string
+
+        // Animate results in one by one
+        const results = data.checks || [];
+        for (let i = 0; i < results.length; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          setChecks(prev => prev.map((c, idx) => idx === i
+            ? { ...c, result: results[i]?.match ? "pass" : "fail", v: results[i]?.found || c.v }
+            : c
+          ));
+        }
+
+        await new Promise(r => setTimeout(r, 600));
+
+        if (data.pass) {
+          setStatus("pass");
+          setTimeout(onDone, 1200);
+        } else {
+          setStatus("fail");
+          setFailReason(data.failReason || "One or more checks failed. Please upload a clearer screenshot.");
+        }
+
+      } catch (e) {
+        // If /api/verify-ticket isn't deployed yet, show a clear message
+        if (e.message.includes("Failed to fetch") || e.message.includes("404")) {
+          setFailReason("Verification backend not deployed yet. Deploy api/verify-ticket.js to enable real AI checks.");
+        } else {
+          setFailReason(e.message);
+        }
+        setStatus("fail");
+      }
+    };
+
+    run();
+  }, [uploadedFile]);
+
   return (
     <div>
-      <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px" }}>Verifying authenticity</h2>
-      <p style={{ color: "var(--ink-mute)", fontSize: 14, margin: "0 0 24px" }}>Cross-checking the screenshot against the event registry. Stay on this page.</p>
+      <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px" }}>
+        {status === "checking" ? "AI verification running…" : status === "pass" ? "All checks passed ✓" : "Verification failed"}
+      </h2>
+      <p style={{ color: "var(--ink-mute)", fontSize: 14, margin: "0 0 24px" }}>
+        {status === "checking" ? "GPT-4o Vision is checking your screenshot against the event details. Stay on this page." :
+         status === "pass"     ? "Your ticket is authentic and matches the event. Proceeding to pricing…" :
+                                 "Your screenshot didn't pass all checks. See the details below."}
+      </p>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-        <div style={{ position: "relative", background: "var(--ink)", color: "var(--paper)", height: 360, overflow: "hidden", border: "1px solid var(--ink)" }}>
-          <div className="ph-img" data-label="ticket screenshot · masked" style={{ position: "absolute", inset: 24, opacity: 0.4 }}></div>
-          <div style={{ position: "absolute", inset: 24, padding: 24, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <div>
-              <div className="cap mono" style={{ color: "var(--accent)" }}>FATSOMA · CONFIRMED</div>
-              <div className="serif" style={{ fontSize: 22, marginTop: 6, lineHeight: 1.1 }}>{event.title}</div>
-              <div className="mono cap-sm" style={{ marginTop: 6, color: "oklch(0.7 0.01 80)" }}>{event.venue} · {event.date}</div>
-            </div>
+        {/* Screenshot preview with scan animation */}
+        <div style={{ position: "relative", overflow: "hidden", border: "1px solid var(--ink)", background: "var(--ink)" }}>
+          {previewUrl
+            ? <img src={previewUrl} alt="your ticket" style={{ width:"100%", height:360, objectFit:"contain", opacity: status === "checking" ? 0.7 : 1, transition:"opacity .4s" }} />
+            : <div className="ph-img" style={{ height:360 }}></div>
+          }
+          {status === "checking" && <div className="scan-line"></div>}
+          <div style={{
+            position:"absolute", top:10, right:10, padding:"4px 10px",
+            fontFamily:"var(--mono)", fontSize:10, letterSpacing:"0.08em",
+            background: status === "checking" ? "var(--accent)" : status === "pass" ? "var(--ok)" : "var(--danger)",
+            color: "white"
+          }}>
+            {status === "checking" ? "● SCANNING" : status === "pass" ? "✓ VERIFIED" : "✗ FAILED"}
           </div>
-          <div className="scan-line"></div>
-          <div style={{ position: "absolute", top: 12, right: 12, background: "var(--accent)", color: "var(--ink)", padding: "4px 10px", fontFamily: "var(--mono)", fontSize: 10 }}>● SCANNING</div>
         </div>
+
+        {/* Check results */}
         <div>
-          {fields.map((f, i) => (
-            <div key={f.k} style={{ display: "grid", gridTemplateColumns: "24px 1fr auto", gap: 14, alignItems: "center", padding: "14px 0", borderBottom: "1px dotted var(--rule)", opacity: i < done ? 1 : 0.35, transition: "opacity .3s" }}>
-              {i < done ? <span style={{ color: "var(--ok)", fontSize: 18 }}>✓</span> : <span className="spin"></span>}
+          {checks.map((c, i) => (
+            <div key={c.k} style={{ display:"grid", gridTemplateColumns:"22px 1fr auto", gap:12, alignItems:"center", padding:"13px 0", borderBottom:"1px dotted var(--rule)", opacity: c.result ? 1 : 0.4, transition:"opacity .3s" }}>
+              {c.result === null
+                ? <span className="spin" style={{ flexShrink:0 }}></span>
+                : c.result === "pass"
+                  ? <span style={{ color:"var(--ok)", fontSize:16, flexShrink:0 }}>✓</span>
+                  : <span style={{ color:"var(--danger)", fontSize:16, flexShrink:0 }}>✗</span>
+              }
               <div>
-                <div className="cap-sm mono" style={{ color: "var(--ink-mute)" }}>{f.k}</div>
-                <div className="mono" style={{ fontSize: 14 }}>{i < done ? f.v : "—"}</div>
+                <div className="cap-sm mono" style={{ color:"var(--ink-mute)", marginBottom:2 }}>{c.k}</div>
+                <div style={{ fontSize:13, fontWeight:500 }}>{c.result ? c.v : "—"}</div>
               </div>
-              <span className="cap-sm mono" style={{ color: i < done ? "var(--ok)" : "var(--ink-mute)" }}>{i < done ? "MATCH" : "…"}</span>
+              <span className="cap-sm mono" style={{
+                color: c.result === "pass" ? "var(--ok)" : c.result === "fail" ? "var(--danger)" : "var(--ink-mute)"
+              }}>
+                {c.result === "pass" ? "MATCH" : c.result === "fail" ? "FAIL" : "…"}
+              </span>
             </div>
           ))}
-          {done >= fields.length && (
-            <div className="fade-in" style={{ marginTop: 18, padding: 14, background: "var(--accent)", border: "1px solid var(--ink)" }}>
-              <div className="cap mono">All checks passed</div>
-              <div className="serif" style={{ fontSize: 22, fontStyle: "italic" }}>Authentic. Proceeding…</div>
+
+          {status === "pass" && (
+            <div className="fade-in" style={{ marginTop:16, padding:"12px 16px", background:"var(--accent)", border:"1px solid var(--ink)" }}>
+              <div style={{ fontWeight:700, fontSize:14 }}>All checks passed</div>
+              <div style={{ fontSize:13, marginTop:2, color:"var(--accent-fg)" }}>Proceeding to set your price…</div>
+            </div>
+          )}
+
+          {status === "fail" && (
+            <div className="fade-in" style={{ marginTop:16, padding:"14px 16px", background:"#FEF2F2", border:"1px solid var(--danger)" }}>
+              <div style={{ fontWeight:700, fontSize:14, color:"var(--danger)", marginBottom:6 }}>Verification failed</div>
+              <div style={{ fontSize:13, lineHeight:1.6, color:"#991B1B" }}>{failReason}</div>
+              <div style={{ marginTop:12, display:"flex", gap:8 }}>
+                <button className="btn btn-ghost btn-sm" style={{ borderColor:"var(--danger)", color:"var(--danger)" }} onClick={onFail}>← Upload a different screenshot</button>
+              </div>
             </div>
           )}
         </div>
@@ -1780,12 +2046,33 @@ function BuyingTicketCard({ item, ev }) {
 /* ─── WALLET SCREEN ──────────────────────────────────────────────────────────── */
 function WalletScreen({ go }) {
   const [tab, setTab] = useState("selling");
+  const [tickets, setTickets] = useState(MY_TICKETS);
+  const [walletLoading, setWalletLoading] = useState(true);
+
+  useEffect(() => {
+    const session = supabase.auth.session ? supabase.auth.session() : null;
+    const token = session?.access_token;
+    if (!token) { setWalletLoading(false); return; }
+
+    Promise.all([
+      fetch('/api/listings?sellerId=me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('/api/transactions?role=buyer', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+    ]).then(([sellerData, buyerData]) => {
+      setTickets(prev => ({
+        ...prev,
+        selling:  sellerData.listings?.length  > 0 ? sellerData.listings  : prev.selling,
+        buying:   buyerData.transactions?.length > 0 ? buyerData.transactions : prev.buying,
+      }));
+      setWalletLoading(false);
+    }).catch(() => setWalletLoading(false));
+  }, []);
+
   const tabs = [
-    { id: "buying", label: "Buying", count: MY_TICKETS.buying.length },
-    { id: "selling", label: "Selling", count: MY_TICKETS.selling.length },
-    { id: "attended", label: "Past", count: MY_TICKETS.attended.length },
+    { id: "buying",   label: "Buying",  count: tickets.buying.length },
+    { id: "selling",  label: "Selling", count: tickets.selling.length },
+    { id: "attended", label: "Past",    count: tickets.attended.length },
   ];
-  const list = MY_TICKETS[tab] || [];
+  const list = tickets[tab] || [];
   return (
     <div className="fade-in container" style={{ padding: "40px 32px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -2028,11 +2315,20 @@ function AuthScreen({ go, onSignIn }) {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const valid = email.endsWith("@exeter.ac.uk") && email.length > 16;
 
-  const handleCode = (i, v) => {
+  const handleCode = async (i, v) => {
     const next = [...code]; next[i] = v.slice(-1); setCode(next);
     if (v && i < 5) document.getElementById(`c${i + 1}`)?.focus();
     if (next.every((x) => x.length === 1)) {
-      setTimeout(() => { setStage("success"); setTimeout(() => { onSignIn(email); go("home"); }, 1400); }, 400);
+      const token = next.join("");
+      const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+      if (error) {
+        setCode(["", "", "", "", "", ""]);
+        alert("Incorrect code — " + error.message);
+        document.getElementById("c0")?.focus();
+      } else {
+        setStage("success");
+        setTimeout(() => { onSignIn(email); }, 1200);
+      }
     }
   };
 
@@ -2052,7 +2348,14 @@ function AuthScreen({ go, onSignIn }) {
             <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 24px" }}>What's your university email?</h2>
             <input className="field" placeholder="ab1234@exeter.ac.uk" value={email} onChange={(e) => setEmail(e.target.value)} style={{ fontSize: 20, padding: "18px 16px" }} />
             {email && !valid && <div style={{ color: "var(--danger)", fontSize: 13, marginTop: 8 }} className="shake">Must be a valid <b>@exeter.ac.uk</b> address.</div>}
-            <button className="btn btn-accent btn-lg" disabled={!valid} style={{ width: "100%", marginTop: 18, justifyContent: "center" }} onClick={() => setStage("code")}>Send 6-digit code →</button>
+            <button className="btn btn-accent btn-lg" disabled={!valid} style={{ width: "100%", marginTop: 18, justifyContent: "center" }}
+                onClick={async () => {
+                  const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+                  if (error) { alert(error.message); }
+                  else { setStage("code"); }
+                }}>
+                Send 6-digit code →
+              </button>
             <div className="mono cap-sm" style={{ color: "var(--ink-mute)", marginTop: 14 }}>By continuing you agree to our terms · refund policy · escrow rules</div>
           </>
         )}
@@ -2269,15 +2572,53 @@ function AdminScreen({ go }) {
 
 /* ─── APP ROOT ───────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [route, setRoute] = useState("admin");
+  const [route, setRoute] = useState("auth");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedListing, setSelectedListing] = useState(null);
   const [prefillSellEvent, setPrefillSellEvent] = useState(null);
-  const [user, setUser] = useState({ initials: "AD", handle: "admin", role: "admin" });
+  const [user, setUser] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
 
   const go = useCallback((r) => { setRoute(r); window.scrollTo({ top: 0, behavior: "instant" }); }, []);
   const openInfo = useCallback((kind) => setInfoModal(kind), []);
+
+  // ── Real Supabase session on load ─────────────────────────────────────────
+  useEffect(() => {
+    // Check for an existing session when the page loads
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const email = session.user.email;
+        setUser({
+          initials: email.slice(0, 2).toUpperCase(),
+          handle:   email.split("@")[0],
+          role:     email === "admin@exeter.ac.uk" ? "admin" : "user",
+          email,
+        });
+        setRoute("home");
+      } else {
+        setRoute("auth");
+      }
+    });
+
+    // Listen for sign in / sign out events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const email = session.user.email;
+        setUser({
+          initials: email.slice(0, 2).toUpperCase(),
+          handle:   email.split("@")[0],
+          role:     email === "admin@exeter.ac.uk" ? "admin" : "user",
+          email,
+        });
+        setRoute(r => r === "auth" ? "home" : r);
+      } else {
+        setUser(null);
+        setRoute("auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // expose setSelectedEvent / setSelectedListing for browse inline buy
   const setEvAndGo = useCallback((ev, r) => { setSelectedEvent(ev); go(r); }, [go]);
@@ -2285,7 +2626,7 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      {route !== "auth" && <Nav route={route} go={go} user={user} />}
+      {route !== "auth" && user && <Nav route={route} go={go} user={user} />}
       {route === "home" && <HomeScreen go={go} setSelectedEvent={setSelectedEvent} openInfo={openInfo} />}
       {route === "browse" && <BrowseScreen go={go} setSelectedEvent={setSelectedEvent} setSelectedListing={setSelectedListing} openInfo={openInfo} />}
       {route === "detail" && selectedEvent && <DetailScreen event={selectedEvent} go={go} setSelectedListing={setSelectedListing} openInfo={openInfo} setPrefillSellEvent={setPrefillSellEvent} />}
@@ -2293,7 +2634,7 @@ export default function App() {
       {route === "sell" && <SellScreen go={go} prefillEvent={prefillSellEvent} />}
       {route === "wallet" && <WalletScreen go={go} />}
       {route === "alerts" && <AlertsScreen go={go} />}
-      {route === "account" && <AccountScreen go={go} user={user} onSignOut={() => { setUser({ initials: "?", handle: "guest" }); go("auth"); }} />}
+      {route === "account" && <AccountScreen go={go} user={user} onSignOut={async () => { await supabase.auth.signOut(); setUser(null); go("auth"); }} />}
       {route === "auth" && <AuthScreen go={go} onSignIn={(em) => { setUser({ initials: em.slice(0, 2).toUpperCase(), handle: em.split("@")[0] }); }} />}
       {route === "admin" && <AdminScreen go={go} />}
       <InfoModal kind={infoModal} onClose={() => setInfoModal(null)} />
