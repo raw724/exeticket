@@ -61,24 +61,4 @@ export async function requireAuth(req, res) {
   return user;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// This file also exposes a direct endpoint you can call from the frontend
-// to check if the current session is still valid.
-// GET /api/auth-check
-// Headers: Authorization: Bearer <supabase_access_token>
-// ─────────────────────────────────────────────────────────────────────────────
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
-
-  const user = await requireAuth(req, res);
-  if (!user) return; // requireAuth already sent the error
-
-  return res.status(200).json({
-    valid:  true,
-    userId: user.id,
-    email:  user.email,
-    handle: user.email.split("@")[0],
-  });
-}
+// auth-check is a shared helper only — no standalone endpoint

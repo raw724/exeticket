@@ -88,7 +88,7 @@ export default async function handler(req, res) {
       }
 
       // Generate the onboarding link (expires after 24 hours)
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://exeticket.com";
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://exeticket.co.uk";
       const accountLink = await stripe.accountLinks.create({
         account:     stripeAccountId,
         refresh_url: `${appUrl}/account?stripe=refresh`,  // if link expires, send back here
