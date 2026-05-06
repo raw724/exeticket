@@ -139,6 +139,11 @@ const CSS = `
   .nav { position: sticky; top: 0; z-index: 50; background: var(--paper); border-bottom: 1px solid var(--ink); }
   .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 32px; }
   .nav-links { display: flex; gap: 24px; align-items: center; }
+  .mobile-menu-btn { display: none !important; }
+  @media (max-width: 768px) {
+    .mobile-menu-btn { display: flex !important; }
+    .nav-links { display: none !important; }
+  }
   .nav-link {
     font-size: 13px; cursor: pointer; color: var(--ink); text-decoration: none;
     position: relative; padding: 4px 0;
@@ -208,6 +213,42 @@ const CSS = `
   ::-webkit-scrollbar-track { background: var(--paper); }
   ::-webkit-scrollbar-thumb { background: var(--ink); }
   ::selection { background: var(--accent); color: var(--accent-fg); }
+
+  /* ═══════════════════════════════════════════════
+     MOBILE RESPONSIVE — 768px and below
+  ═══════════════════════════════════════════════ */
+  @media (max-width: 768px) {
+    /* Base */
+    .container { padding: 0 16px; }
+    .nav-inner { padding: 12px 16px; }
+    .nav-links { display: none; }
+
+    /* Nav — hide text links, keep logo + button */
+    .nav-inner { gap: 10px; }
+
+    /* Typography scale down */
+    .serif { letter-spacing: -0.01em; }
+
+    /* Buttons */
+    .btn-lg { padding: 14px 20px; font-size: 14px; }
+
+    /* Modal */
+    .modal { max-height: 95vh; margin: 0 8px; }
+
+    /* Auth screen — stack panels */
+    .auth-grid { grid-template-columns: 1fr !important; }
+    .auth-left { display: none !important; }
+    .auth-right { padding: 40px 24px !important; }
+
+    /* Browse table rows */
+    .browse-row { grid-template-columns: 1fr !important; gap: 8px !important; }
+    .browse-row > * { min-width: unset !important; }
+  }
+
+  @media (max-width: 480px) {
+    .container { padding: 0 12px; }
+  }
+
 `;
 
 /* ─── MOCK DATA ─────────────────────────────────────────────────────────────── */
@@ -409,17 +450,19 @@ function Nav({ route, go, user }) {
     { id: "sell",   label: "Sell" },
     { id: "wallet", label: "Wallet" },
   ];
-  // Only show Admin tab to users with admin role
   const items = user?.role === "admin"
     ? [...baseItems, { id: "admin", label: "Admin" }]
     : baseItems;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const wrap = useRef(null);
   useEffect(() => {
     const onDoc = (e) => { if (wrap.current && !wrap.current.contains(e.target)) setMenuOpen(false); };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
+  // Close mobile nav on route change
+  useEffect(() => { setMobileNavOpen(false); }, [route]);
   return (
     <nav className="nav">
       <div className="nav-inner">
@@ -429,11 +472,23 @@ function Nav({ route, go, user }) {
             <a key={it.id} className={`nav-link ${route === it.id ? "active" : ""}`} onClick={() => go(it.id)}>{it.label}</a>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Hamburger — mobile only */}
+          <button onClick={() => setMobileNavOpen(true)} style={{
+            all: "unset", cursor: "pointer", display: "none", flexDirection: "column",
+            gap: 5, padding: "4px 8px",
+            ["@media(max-width:768px)" as any]: { display: "flex" }
+          }}
+            className="mobile-menu-btn"
+          >
+            <span style={{ display: "block", width: 22, height: 2, background: "var(--ink)" }}></span>
+            <span style={{ display: "block", width: 22, height: 2, background: "var(--ink)" }}></span>
+            <span style={{ display: "block", width: 22, height: 2, background: "var(--ink)" }}></span>
+          </button>
           <div ref={wrap} style={{ position: "relative" }}>
             {!user ? (
               <button className="btn btn-accent btn-sm" onClick={() => go("auth")}>
-                Sign in / Register
+                Sign in
               </button>
             ) : (
             <button onClick={() => setMenuOpen(!menuOpen)} style={{
@@ -464,6 +519,34 @@ function Nav({ route, go, user }) {
           </div>
         </div>
       </div>
+      {/* Mobile nav drawer */}
+      {mobileNavOpen && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 200, background: "var(--paper)",
+          display: "flex", flexDirection: "column", padding: "0 0 32px",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid var(--ink)" }}>
+            <Logo onClick={() => { go("home"); setMobileNavOpen(false); }} />
+            <button onClick={() => setMobileNavOpen(false)} style={{ all: "unset", cursor: "pointer", fontSize: 24, lineHeight: 1, padding: "4px 8px" }}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto" }}>
+            {items.map((it) => (
+              <button key={it.id} onClick={() => { go(it.id); setMobileNavOpen(false); }} style={{
+                all: "unset", display: "block", width: "100%", padding: "18px 20px",
+                fontSize: 20, fontWeight: 600, borderBottom: "1px solid var(--rule)",
+                cursor: "pointer", color: route === it.id ? "var(--accent)" : "var(--ink)",
+                background: route === it.id ? "var(--accent-soft)" : "transparent",
+              }}>{it.label}</button>
+            ))}
+          </div>
+          <div style={{ padding: "0 16px" }}>
+            {!user
+              ? <button className="btn btn-accent" style={{ width: "100%", justifyContent: "center" }} onClick={() => { go("auth"); setMobileNavOpen(false); }}>Sign in / Register</button>
+              : <button className="btn btn-ghost" style={{ width: "100%", justifyContent: "center", borderColor: "var(--danger)", color: "var(--danger)" }} onClick={async () => { await supabase.auth.signOut(); setMobileNavOpen(false); }}>Sign out</button>
+            }
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
@@ -937,9 +1020,9 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
   return (
     <div className="fade-in">
       <div className="container" style={{ padding: "56px 32px 0" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 56, padding: "40px 0 32px", alignItems: "center" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "clamp(1fr, 1.4fr, 1.4fr) clamp(0px, 1fr, 1fr)", gap: "clamp(24px, 4vw, 56px)", padding: "clamp(24px, 4vw, 40px) 0 32px", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontSize: "clamp(48px, 7vw, 96px)", lineHeight: 0.95, letterSpacing: "-0.03em", fontWeight: 700, margin: 0 }}>
+            <h1 style={{ fontSize: "clamp(36px, 7vw, 96px)", lineHeight: 0.95, letterSpacing: "-0.03em", fontWeight: 700, margin: 0 }}>
               Resold,<br />
               <span style={{ fontStyle: "normal" }}>verified,</span><br />
               <span style={{ background: "var(--accent)", color: "var(--accent-fg)", padding: "2px 14px", display: "inline-block", marginTop: 8, borderRadius: 4 }}>safe.</span>
@@ -960,15 +1043,15 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
       <section className="container" style={{ padding: "56px 32px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 24 }}>
           <h2 className="serif" style={{ fontSize: 32, margin: 0, fontStyle: "italic", fontWeight: 400 }}>Tonight & this week</h2>
-          <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all {events.length} events ↗</a>
+          <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all 47 events ↗</a>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16 }}>
           <EventCard event={featured} onOpen={() => openEvent(featured)} large accent />
           <div style={{ display: "grid", gap: 24, gridTemplateRows: "1fr 1fr" }}>
             {more.slice(0, 2).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 24, marginTop: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, marginTop: 16 }}>
           {more.slice(2, 5).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
         </div>
       </section>
@@ -979,7 +1062,7 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
             <span className="cap mono" style={{ color: "var(--accent)" }}>§ Method</span>
             <span className="cap mono" style={{ opacity: 0.6 }}>How escrow works</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 32 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 28 }}>
             {[
               { n: "01", t: "Seller uploads", d: "Screenshot of the original ticket. Our scanner reads event, date, time, seat, barcode." },
               { n: "02", t: "We verify", d: "Match against the event registry. Fail = listing rejected. Pass = goes live in escrow." },
@@ -1037,7 +1120,7 @@ function BrowseScreen({ go, setSelectedEvent, openInfo }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24 }}>
           <div>
             <div className="cap mono" style={{ color: "var(--ink-mute)" }}>§ Browse</div>
-            <h1 className="serif" style={{ fontSize: 64, fontStyle: "italic", fontWeight: 400, margin: "12px 0 0", letterSpacing: "-0.02em", lineHeight: 0.95 }}>What's on, who's selling.</h1>
+            <h1 className="serif" style={{ fontSize: "clamp(32px, 6vw, 64px)", fontStyle: "italic", fontWeight: 400, margin: "12px 0 0", letterSpacing: "-0.02em", lineHeight: 0.95 }}>What's on, who's selling.</h1>
           </div>
           <div style={{ textAlign: "right" }}>
             <div className="mono" style={{ fontSize: 36 }}>{rows.reduce((a, r) => a + r.listings.length, 0)}</div>
@@ -1060,8 +1143,8 @@ function BrowseScreen({ go, setSelectedEvent, openInfo }) {
             return (
               <div key={r.ev.id} style={{ borderBottom: "1px solid var(--ink)" }}>
                 <div onClick={() => { setSelectedEvent(r.ev); go("detail"); }} style={{
-                  display: "grid", gridTemplateColumns: "72px 1fr auto auto auto auto", gap: 24,
-                  padding: "24px 0", cursor: "pointer", alignItems: "center",
+                  display: "grid", gridTemplateColumns: "40px 1fr auto",
+                  gap: "12px 16px", padding: "18px 0", cursor: "pointer", alignItems: "center",
                 }}
                   onMouseEnter={(e) => e.currentTarget.style.background = "var(--paper-2)"}
                   onMouseLeave={(e) => e.currentTarget.style.background = ""}
@@ -1185,7 +1268,7 @@ function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellE
       <section className="ink-bg" style={{ borderBottom: "1px solid var(--ink)" }}>
         <div className="container" style={{ padding: "48px 32px" }}>
           <button className="btn btn-ghost btn-sm" onClick={() => go("browse")} style={{ marginBottom: 24, color: "var(--paper)", borderColor: "var(--paper)" }}>← Browse</button>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 64, alignItems: "center" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 32, alignItems: "center" }}>
             <div>
               <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
                 <span className="badge badge-accent">{event.tag}</span>
@@ -1193,7 +1276,7 @@ function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellE
               </div>
               <h1 className="serif" style={{ fontSize: "clamp(56px, 8vw, 110px)", lineHeight: 0.92, fontWeight: 400, letterSpacing: "-0.03em", margin: 0, fontStyle: "italic" }}>{event.title}</h1>
               <p style={{ fontSize: 18, lineHeight: 1.5, marginTop: 24, color: "oklch(0.78 0.01 80)", maxWidth: 520 }}>{event.blurb}</p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 24, marginTop: 32, paddingTop: 32, borderTop: "1px solid oklch(0.3 0 0)" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: "16px 24px", marginTop: 24, paddingTop: 24, borderTop: "1px solid oklch(0.3 0 0)" }}>
                 {[["Venue", event.venue], ["Date", event.date], ["Doors → close", `${event.door} → ${event.close}`]].map(([l, v]) => (
                   <div key={l}>
                     <div className="cap-sm mono" style={{ opacity: 0.6, marginBottom: 6 }}>{l}</div>
@@ -1212,7 +1295,7 @@ function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellE
       </section>
 
       <section className="container" style={{ padding: "56px 32px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 56, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 32, alignItems: "start" }}>
           <div>
             <div style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 6 }}>
@@ -1433,7 +1516,7 @@ function BuyScreen({ event, listing, go }) {
         </div>
       </div>
       <hr className="rule-ink" />
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 48, marginTop: 40, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 32, marginTop: 32, alignItems: "start" }}>
         <div>
           <HoloTicket event={event} listing={listing} status={step >= 2 ? "held" : "preview"} />
           {step === 0 && (
@@ -1507,11 +1590,11 @@ function SellScreen({ go, prefillEvent }) {
   const steps = ["Event", "Upload", "Verify", "Price", "Live"];
 
   return (
-    <div className="fade-in container" style={{ padding: "40px 32px", maxWidth: 1200 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+    <div className="fade-in container" style={{ padding: "clamp(20px, 4vw, 40px) clamp(16px, 4vw, 32px)", maxWidth: 1200 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div>
           <div className="cap mono" style={{ color: "var(--ink-mute)" }}>§ Sell a ticket</div>
-          <h1 className="serif" style={{ fontSize: 64, fontStyle: "italic", fontWeight: 400, margin: "10px 0 16px", letterSpacing: "-0.02em", lineHeight: 1.05 }}>List in five steps.</h1>
+          <h1 className="serif" style={{ fontSize: "clamp(36px, 6vw, 64px)", fontStyle: "italic", fontWeight: 400, margin: "10px 0 16px", letterSpacing: "-0.02em", lineHeight: 1.05 }}>List in five steps.</h1>
         </div>
         <button className="btn btn-accent btn-lg" onClick={() => setSellShowAddEvent(true)} style={{ display:"flex", alignItems:"center", gap:10 }}>
           <span style={{ fontSize:18, lineHeight:1 }}>+</span>
@@ -1522,7 +1605,7 @@ function SellScreen({ go, prefillEvent }) {
         </button>
       </div>
       <hr className="rule-ink" />
-      <div style={{ display: "flex", gap: 0, padding: "24px 0", borderBottom: "1px solid var(--rule)" }}>
+      <div style={{ display: "flex", gap: 0, padding: "16px 0", borderBottom: "1px solid var(--rule)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         {steps.map((s, i) => (
           <div key={s} style={{
             flex: 1, padding: "12px 16px",
@@ -2286,9 +2369,9 @@ function WalletScreen({ go }) {
         </div>
       </div>
       <hr className="rule-ink" style={{ margin: "24px 0" }} />
-      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--ink)" }}>
+      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--ink)", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ whiteSpace: "nowrap",
             all: "unset", cursor: "pointer", padding: "14px 24px",
             borderBottom: tab === t.id ? "3px solid var(--accent)" : "3px solid transparent",
             fontFamily: "var(--serif)", fontSize: 22, fontStyle: "italic",
@@ -2299,7 +2382,7 @@ function WalletScreen({ go }) {
           </button>
         ))}
       </div>
-      <div style={{ padding: "32px 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}>
+      <div style={{ padding: "32px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 20 }}>
         {list.length === 0 && <div style={{ padding: 48, textAlign: "center", color: "var(--ink-mute)", gridColumn: "span 2" }}>Nothing here yet.</div>}
         {list.map((item) => {
           const ev = EVENTS.find((e) => e.id === item.eventId);
@@ -2580,9 +2663,9 @@ function AuthScreen({ go, onSignIn }) {
   );
 
   if (stage === "verify") return (
-    <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-      <LeftPanel />
-      <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+    <div className="fade-in" className="auth-grid" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <div className="auth-left"><LeftPanel /></div>
+      <div className="auth-right" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
         <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Check your inbox.</h2>
         <p style={{ color: "var(--ink-mute)", fontSize: 15, lineHeight: 1.6, marginBottom: 24 }}>
@@ -2603,9 +2686,9 @@ function AuthScreen({ go, onSignIn }) {
   );
 
   if (stage === "success") return (
-    <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-      <LeftPanel />
-      <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
+    <div className="fade-in" className="auth-grid" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <div className="auth-left"><LeftPanel /></div>
+      <div className="auth-right" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ display: "inline-block", padding: "4px 12px", background: "var(--accent)", color: "var(--accent-fg)", fontFamily: "var(--mono)", fontSize: 11, textTransform: "uppercase", marginBottom: 14 }}>● Signed in</div>
         <h2 className="serif" style={{ fontSize: 48, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px", lineHeight: 1 }}>You are in.</h2>
         <p style={{ color: "var(--ink-mute)" }}>Redirecting…</p>
@@ -2614,9 +2697,9 @@ function AuthScreen({ go, onSignIn }) {
   );
 
   return (
-    <div className="fade-in" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-      <LeftPanel />
-      <div style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 520 }}>
+    <div className="fade-in auth-grid" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
+      <div className="auth-left"><LeftPanel /></div>
+      <div className="auth-right" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 520 }}>
         <div style={{ display: "flex", gap: 0, marginBottom: 32, borderBottom: "1px solid var(--rule)" }}>
           {[["signin","Sign in"],["signup","Create account"]].map(([id, label]) => (
             <button key={id} onClick={() => { setTab(id); setError(""); }} style={{
@@ -2687,7 +2770,7 @@ function AccountScreen({ go, user, onSignOut }) {
   const sections = [{ id: "profile", label: "Profile" }, { id: "payouts", label: "Payout details" }, { id: "security", label: "Security" }, { id: "notifications", label: "Notifications" }, { id: "data", label: "Data & privacy" }];
 
   return (
-    <div className="fade-in container" style={{ padding: "40px 32px", maxWidth: 1200 }}>
+    <div className="fade-in container" style={{ padding: "clamp(20px, 4vw, 40px) clamp(16px, 4vw, 32px)", maxWidth: 1200 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <div>
           <div className="cap mono" style={{ color: "var(--ink-mute)" }}>§ Account</div>
@@ -2786,7 +2869,7 @@ function AdminScreen({ go }) {
         </div>
       </div>
       <hr className="rule-ink" style={{ margin: "24px 0" }} />
-      <div style={{ display: "grid", gridTemplateColumns: "420px 1fr", gap: 32 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 24 }}>
         <div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             {["open", "investigating", "review", "all"].map((f) => (
