@@ -474,12 +474,9 @@ function Nav({ route, go, user }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {/* Hamburger — mobile only */}
-          <button onClick={() => setMobileNavOpen(true)} style={{
-            all: "unset", cursor: "pointer", display: "none", flexDirection: "column",
-            gap: 5, padding: "4px 8px",
-            ["@media(max-width:768px)" as any]: { display: "flex" }
-          }}
+          <button onClick={() => setMobileNavOpen(true)}
             className="mobile-menu-btn"
+            style={{ all: "unset", cursor: "pointer", flexDirection: "column", gap: 5, padding: "4px 8px" }}
           >
             <span style={{ display: "block", width: 22, height: 2, background: "var(--ink)" }}></span>
             <span style={{ display: "block", width: 22, height: 2, background: "var(--ink)" }}></span>
