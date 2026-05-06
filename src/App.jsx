@@ -318,13 +318,12 @@ const INFO_CONTENT = {
   ]},
   disputes: { title:"Dispute resolution", body:[
     ["Open from Wallet","On any ticket in your Wallet you can open a dispute. Seller payout is frozen the moment you do."],
-    ["Evidence","Attach screenshots, door-staff names, anything relevant. We pull the ticket history server-side automatically."],
-    ["Trust & Safety review","A real human (a final-year Exeter student paid by us) reviews each dispute. No bots."],
-    ["Outcome","98.1% of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed."],
+    ["Evidence","Attach any screenshots or relevant information you have. We pull the full ticket and transaction history automatically."],
+    ["Trust & Safety review","Every dispute is reviewed by a member of the Exeticket team. We investigate both sides before making a decision."],
+    ["Outcome","The large majority of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed from the platform."],
   ]},
   verified: { title:"Verified students", body:[
-    ["One account per student","Sign-up requires a valid @exeter.ac.uk email and a one-off magic link. We do not store passwords."],
-    ["Account age signal","New accounts can buy immediately, but selling requires 7 days of account age. Reduces sock-puppet abuse."],
+    ["One account per student","Sign-up requires a valid @exeter.ac.uk email. Your address is verified before your account is activated."],
     ["No off-platform deals","Trying to push a deal off-platform (WhatsApp, Insta) gets you banned. Both sides."],
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
