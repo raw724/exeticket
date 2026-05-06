@@ -2754,19 +2754,26 @@ function AuthScreen({ go, onSignIn }) {
     if (!validEmail) { setError("Enter your @exeter.ac.uk email first."); return; }
     setLoading(true);
     setError("");
-    const res = await fetch('/api/auth-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'recovery', email })
-    });
-    if (res.ok) {
-      setError("");
-      setStage("forgot-sent");
-    } else {
-      const d = await res.json();
-      setError(d.error || "Failed to send reset email. Try again.");
+    try {
+      const res = await fetch('/api/auth-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'recovery', email })
+      });
+      const text = await res.text();
+      let d = {};
+      try { d = JSON.parse(text); } catch {}
+      if (res.ok) {
+        setError("");
+        setStage("forgot-sent");
+      } else {
+        setError(d.error || `Error ${res.status} — try again.`);
+      }
+    } catch (e) {
+      setError("Network error — check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const LeftPanel = () => (
