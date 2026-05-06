@@ -2616,6 +2616,73 @@ function AlertsScreen({ go }) {
   );
 }
 
+/* ─── RESET PASSWORD SCREEN ─────────────────────────────────────────────────── */
+function ResetPasswordScreen({ go }) {
+  const [password, setPassword]   = useState("");
+  const [confirm, setConfirm]     = useState("");
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState("");
+  const [done, setDone]           = useState(false);
+  const [showPass, setShowPass]   = useState(false);
+
+  const valid = password.length >= 8 && password === confirm;
+
+  const handleSubmit = async () => {
+    setLoading(true); setError("");
+    const { error: err } = await supabase.auth.updateUser({ password });
+    if (err) { setError(err.message); setLoading(false); return; }
+    setDone(true);
+    setTimeout(() => {
+      // Clear the ?reset=true from URL
+      window.history.replaceState({}, "", window.location.pathname);
+      go("home");
+    }, 2000);
+    setLoading(false);
+  };
+
+  if (done) return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, padding: 24 }}>
+      <div style={{ fontSize: 48 }}>✅</div>
+      <h2 style={{ fontSize: 24, fontWeight: 700 }}>Password updated!</h2>
+      <p style={{ color: "var(--ink-mute)" }}>Redirecting you home…</p>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ width: "100%", maxWidth: 420 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px", letterSpacing: "-0.02em" }}>Set a new password</h1>
+        <p style={{ color: "var(--ink-mute)", fontSize: 14, marginBottom: 24 }}>Choose a new password for your Exeticket account.</p>
+        <div style={{ display: "grid", gap: 14 }}>
+          <div>
+            <label style={{ fontSize: 12, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 8 }}>New password</label>
+            <div style={{ position: "relative" }}>
+              <input className="field" type={showPass ? "text" : "password"} placeholder="Min. 8 characters"
+                value={password} onChange={e => { setPassword(e.target.value); setError(""); }}
+                style={{ fontSize: 16, paddingRight: 56 }} />
+              <button onClick={() => setShowPass(!showPass)} style={{ all: "unset", cursor: "pointer", position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--ink-mute)" }}>
+                {showPass ? "Hide" : "Show"}
+              </button>
+            </div>
+            {password && password.length < 8 && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>At least 8 characters</div>}
+          </div>
+          <div>
+            <label style={{ fontSize: 12, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 8 }}>Confirm password</label>
+            <input className="field" type={showPass ? "text" : "password"} placeholder="Re-enter password"
+              value={confirm} onChange={e => { setConfirm(e.target.value); setError(""); }}
+              style={{ fontSize: 16, borderColor: confirm && confirm !== password ? "var(--danger)" : undefined }} />
+            {confirm && confirm !== password && <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>Passwords do not match</div>}
+          </div>
+          {error && <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid var(--danger)", color: "var(--danger)", fontSize: 13 }}>{error}</div>}
+          <button className="btn btn-accent btn-lg" disabled={!valid || loading} style={{ width: "100%", justifyContent: "center" }} onClick={handleSubmit}>
+            {loading ? <><span className="spin" style={{ borderColor: "var(--accent-fg)", borderRightColor: "transparent" }}></span> Updating…</> : "Update password →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── AUTH SCREEN ────────────────────────────────────────────────────────────── */
 function AuthScreen({ go, onSignIn }) {
   const [tab, setTab]           = useState("signin");
@@ -2634,21 +2701,22 @@ function AuthScreen({ go, onSignIn }) {
   const handleSubmit = async () => {
     setError(""); setLoading(true);
     if (tab === "signup") {
+      // First create the account in Supabase (unconfirmed)
       const { error: err } = await supabase.auth.signUp({ email, password });
       if (err) { setError(err.message); setLoading(false); return; }
 
-      // Send welcome/confirmation email via Resend directly — bypass Supabase SMTP
-      try {
-        await fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'verify',
-            to: email,
-            data: { link: window.location.origin }
-          })
-        });
-      } catch (e) { console.warn('Email send failed:', e); }
+      // Send real verification email via our API → Resend (bypasses Supabase SMTP)
+      const emailRes = await fetch('/api/auth-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'signup', email })
+      });
+      if (!emailRes.ok) {
+        const errData = await emailRes.json();
+        setError("Account created but couldn't send verification email: " + errData.error + ". Contact support@exeticket.com");
+        setLoading(false);
+        return;
+      }
 
       setStage("verify");
     } else {
@@ -2670,11 +2738,19 @@ function AuthScreen({ go, onSignIn }) {
   const handleForgot = async () => {
     if (!validEmail) { setError("Enter your @exeter.ac.uk email first."); return; }
     setLoading(true);
-    const { error: err } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
+    setError("");
+    const res = await fetch('/api/auth-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'recovery', email })
     });
-    if (err) { setError(err.message); }
-    else { alert("Password reset email sent to " + email + ". Check your inbox."); }
+    if (res.ok) {
+      setError("");
+      setStage("forgot-sent");
+    } else {
+      const d = await res.json();
+      setError(d.error || "Failed to send reset email. Try again.");
+    }
     setLoading(false);
   };
 
@@ -2705,9 +2781,9 @@ function AuthScreen({ go, onSignIn }) {
       <div className="auth-left"><LeftPanel /></div>
       <div className="auth-right" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-        <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Account created.</h2>
+        <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Check your inbox.</h2>
         <p style={{ color: "var(--ink-mute)", fontSize: 15, lineHeight: 1.6, marginBottom: 24 }}>
-          Welcome to Exeticket. Your account is active — sign in now with your email and password.
+          We sent a confirmation link to <b style={{ fontFamily: "var(--mono)" }}>{email}</b> from <b>no-reply@exeticket.com</b>. Click it to activate your account, then come back to sign in.
         </p>
         <button className="btn btn-accent" style={{ marginTop: 8 }} onClick={() => { setStage("form"); setTab("signin"); }}>
           Sign in now →
@@ -2999,6 +3075,13 @@ export default function App() {
   // ── Real Supabase session on load ─────────────────────────────────────────
   useEffect(() => {
     // Check for an existing session when the page loads
+    // Handle password reset redirect (?reset=true in URL from email link)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reset") === "true") {
+      setRoute("auth");
+      // Supabase will have set a session from the reset link — show password update form
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         const email = session.user.email;
@@ -3008,6 +3091,10 @@ export default function App() {
           role:     email === "rw877@exeter.ac.uk" ? "admin" : "user",
           email,
         });
+        // If coming back from password reset link, show update password screen
+        if (params.get("reset") === "true") {
+          setRoute("reset-password");
+        }
       }
       // Always start on home regardless of login state
     });
@@ -3048,6 +3135,7 @@ export default function App() {
       {route === "alerts" && <AlertsScreen go={go} />}
       {route === "account" && <AccountScreen go={go} user={user} onSignOut={async () => { await supabase.auth.signOut(); setUser(null); go("auth"); }} />}
       {route === "auth" && <AuthScreen go={go} onSignIn={(em) => { setUser({ initials: em.slice(0, 2).toUpperCase(), handle: em.split("@")[0] }); }} />}
+      {route === "reset-password" && <ResetPasswordScreen go={go} />}
       {route === "admin" && (user?.role === "admin" ? <AdminScreen go={go} /> : (() => { go("home"); return null; })())}
       <InfoModal kind={infoModal} onClose={() => setInfoModal(null)} />
     </>
