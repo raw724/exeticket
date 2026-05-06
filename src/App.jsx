@@ -429,6 +429,11 @@ function Nav({ route, go, user }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <div ref={wrap} style={{ position: "relative" }}>
+            {!user ? (
+              <button className="btn btn-accent btn-sm" onClick={() => go("auth")}>
+                Sign in / Register
+              </button>
+            ) : (
             <button onClick={() => setMenuOpen(!menuOpen)} style={{
               all: "unset", cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
               padding: "4px 8px 4px 4px", border: "1px solid var(--rule)"
@@ -441,7 +446,8 @@ function Nav({ route, go, user }) {
               <span className="mono" style={{ fontSize: 12 }}>{user.handle}</span>
               <span style={{ fontSize: 9, color: "var(--ink-mute)" }}>▼</span>
             </button>
-            {menuOpen && (
+            )}
+            {menuOpen && user && (
               <div className="menu fade-in">
                 <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--rule)" }}>
                   <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>Signed in as</div>
@@ -2313,7 +2319,7 @@ function AuthScreen({ go, onSignIn }) {
   const [email, setEmail] = useState("");
   const [stage, setStage] = useState("email");
   const [code, setCode] = useState(["", "", "", "", "", ""]);
-  const valid = email.includes("@") && email.length > 5;
+  const valid = email.endsWith("@exeter.ac.uk") && email.length > 16;
 
   const handleCode = async (i, v) => {
     const next = [...code]; next[i] = v.slice(-1); setCode(next);
@@ -2572,7 +2578,7 @@ function AdminScreen({ go }) {
 
 /* ─── APP ROOT ───────────────────────────────────────────────────────────────── */
 export default function App() {
-  const [route, setRoute] = useState("auth");
+  const [route, setRoute] = useState("home");
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedListing, setSelectedListing] = useState(null);
   const [prefillSellEvent, setPrefillSellEvent] = useState(null);
@@ -2594,10 +2600,8 @@ export default function App() {
           role:     email === "admin@exeter.ac.uk" ? "admin" : "user",
           email,
         });
-        setRoute("home");
-      } else {
-        setRoute("auth");
       }
+      // Always start on home regardless of login state
     });
 
     // Listen for sign in / sign out events
@@ -2613,7 +2617,7 @@ export default function App() {
         setRoute(r => r === "auth" ? "home" : r);
       } else {
         setUser(null);
-        setRoute("auth");
+        // Stay on home when logged out — don't redirect to auth
       }
     });
 
@@ -2626,13 +2630,13 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      {route !== "auth" && user && <Nav route={route} go={go} user={user} />}
+      {route !== "auth" && <Nav route={route} go={go} user={user} />}
       {route === "home" && <HomeScreen go={go} setSelectedEvent={setSelectedEvent} openInfo={openInfo} />}
       {route === "browse" && <BrowseScreen go={go} setSelectedEvent={setSelectedEvent} setSelectedListing={setSelectedListing} openInfo={openInfo} />}
       {route === "detail" && selectedEvent && <DetailScreen event={selectedEvent} go={go} setSelectedListing={setSelectedListing} openInfo={openInfo} setPrefillSellEvent={setPrefillSellEvent} />}
       {route === "buy" && selectedEvent && selectedListing && <BuyScreen event={selectedEvent} listing={selectedListing} go={go} />}
-      {route === "sell" && <SellScreen go={go} prefillEvent={prefillSellEvent} />}
-      {route === "wallet" && <WalletScreen go={go} />}
+      {route === "sell" && (user ? <SellScreen go={go} prefillEvent={prefillSellEvent} /> : (() => { go("auth"); return null; })())}
+      {route === "wallet" && (user ? <WalletScreen go={go} /> : (() => { go("auth"); return null; })())}
       {route === "alerts" && <AlertsScreen go={go} />}
       {route === "account" && <AccountScreen go={go} user={user} onSignOut={async () => { await supabase.auth.signOut(); setUser(null); go("auth"); }} />}
       {route === "auth" && <AuthScreen go={go} onSignIn={(em) => { setUser({ initials: em.slice(0, 2).toUpperCase(), handle: em.split("@")[0] }); }} />}
