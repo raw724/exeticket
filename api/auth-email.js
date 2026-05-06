@@ -108,14 +108,19 @@ export default async function handler(req, res) {
     // Send via Resend
     if (!RESEND) throw new Error("RESEND_API_KEY not configured");
 
-    const r = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${RESEND}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: FROM, to: [email], subject, html }),
-    });
+    const r = await fetch("https://api.brevo.com/v3/smtp/email", {
+  method: "POST",
+  headers: {
+    "api-key": process.env.BREVO_API_KEY,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    sender:   { name: "Exeticket", email: "no-reply@exeticket.com" },
+    to:       [{ email }],
+    subject,
+    htmlContent: html,
+  }),
+});
 
     const result = await r.json();
     if (!r.ok) throw new Error(result?.message || JSON.stringify(result));
