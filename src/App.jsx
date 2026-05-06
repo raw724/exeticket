@@ -2699,55 +2699,58 @@ function AuthScreen({ go, onSignIn }) {
   const validForm  = validEmail && validPass && (tab === "signin" || confirm === password);
 
   const handleSubmit = async () => {
-    setError(""); setLoading(true);
-    if (tab === "signup") {
-      // Create account in Supabase
-      const { data: signUpData, error: err } = await supabase.auth.signUp({ email, password });
-      if (err) { setError(err.message); setLoading(false); return; }
+    setError("");
+    setLoading(true);
+    try {
+      if (tab === "signup") {
+        const { data: signUpData, error: err } = await supabase.auth.signUp({ email, password });
 
-      // If Supabase says user already exists / already confirmed, handle it
-      if (signUpData?.user?.identities?.length === 0) {
-        setError("An account with this email already exists. Try signing in instead.");
+        if (err) {
+          setError(err.message);
+          return;
+        }
+
+        if (signUpData?.user?.identities?.length === 0) {
+          setError("An account with this email already exists. Try signing in instead.");
+          return;
+        }
+
+        // Show verify screen immediately
+        setStage("verify");
         setLoading(false);
-        return;
-      }
 
-      // Send verification email via our API (Brevo)
-      // Don't block on this — show the verify screen regardless
-      setStage("verify");
-      setLoading(false);
-
-      // Fire email in background after showing the screen
-      try {
-        const emailRes = await fetch('/api/auth-email', {
+        // Send email in background — non-blocking
+        fetch('/api/auth-email', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'signup', email })
-        });
-        const emailData = await emailRes.json();
-        if (!emailRes.ok) {
-          console.error('Email send failed:', emailData.error);
-        } else {
-          console.log('Verification email sent:', emailData.messageId);
+        })
+          .then(r => r.json())
+          .then(d => console.log('Email result:', d))
+          .catch(e => console.error('Email error:', e));
+
+      } else {
+        const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+        if (err) {
+          if (err.message.toLowerCase().includes("email not confirmed")) {
+            setError("Please verify your email first — check your inbox for the confirmation link.");
+          } else if (err.message.toLowerCase().includes("invalid")) {
+            setError("Incorrect email or password.");
+          } else {
+            setError(err.message);
+          }
+          return;
         }
-      } catch (emailErr) {
-        console.error('Email fetch error:', emailErr.message);
+        setStage("success");
+        setTimeout(() => onSignIn(email), 1000);
       }
-      return;
-    } else {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-      if (err) {
-        if (err.message.toLowerCase().includes("email not confirmed")) {
-          setError("Please verify your email first — check your inbox for the confirmation link.");
-        } else if (err.message.toLowerCase().includes("invalid")) {
-          setError("Incorrect email or password.");
-        } else { setError(err.message); }
-        setLoading(false); return;
-      }
-      setStage("success");
-      setTimeout(() => onSignIn(email), 1000);
+    } catch (e) {
+      const msg = e?.message || e?.error_description || JSON.stringify(e) || "Unknown error";
+      setError("Error: " + msg);
+      console.error("handleSubmit error:", e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleForgot = async () => {
