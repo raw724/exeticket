@@ -2701,24 +2701,39 @@ function AuthScreen({ go, onSignIn }) {
   const handleSubmit = async () => {
     setError(""); setLoading(true);
     if (tab === "signup") {
-      // First create the account in Supabase (unconfirmed)
-      const { error: err } = await supabase.auth.signUp({ email, password });
+      // Create account in Supabase
+      const { data: signUpData, error: err } = await supabase.auth.signUp({ email, password });
       if (err) { setError(err.message); setLoading(false); return; }
 
-      // Send real verification email via our API → Resend (bypasses Supabase SMTP)
-      const emailRes = await fetch('/api/auth-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'signup', email })
-      });
-      if (!emailRes.ok) {
-        const errData = await emailRes.json();
-        setError("Account created but couldn't send verification email: " + errData.error + ". Contact support@exeticket.com");
+      // If Supabase says user already exists / already confirmed, handle it
+      if (signUpData?.user?.identities?.length === 0) {
+        setError("An account with this email already exists. Try signing in instead.");
         setLoading(false);
         return;
       }
 
+      // Send verification email via our API (Brevo)
+      // Don't block on this — show the verify screen regardless
       setStage("verify");
+      setLoading(false);
+
+      // Fire email in background after showing the screen
+      try {
+        const emailRes = await fetch('/api/auth-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'signup', email })
+        });
+        const emailData = await emailRes.json();
+        if (!emailRes.ok) {
+          console.error('Email send failed:', emailData.error);
+        } else {
+          console.log('Verification email sent:', emailData.messageId);
+        }
+      } catch (emailErr) {
+        console.error('Email fetch error:', emailErr.message);
+      }
+      return;
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password });
       if (err) {
