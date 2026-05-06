@@ -214,6 +214,26 @@ const CSS = `
   ::-webkit-scrollbar-thumb { background: var(--ink); }
   ::selection { background: var(--accent); color: var(--accent-fg); }
 
+  /* ── Stats grid ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-left: 1px solid var(--ink);
+  }
+  .stats-cell {
+    border-right: 1px solid var(--ink);
+    padding: 8px 24px;
+  }
+
+  /* ── Footer grid ── */
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 40px;
+    margin-bottom: 0;
+  }
+  .footer-brand { grid-column: 1 / -1; }
+
   /* ═══════════════════════════════════════════════
      MOBILE RESPONSIVE — 768px and below
   ═══════════════════════════════════════════════ */
@@ -228,6 +248,14 @@ const CSS = `
 
     /* Typography scale down */
     .serif { letter-spacing: -0.01em; }
+
+    /* Stats grid — 2x2 on mobile */
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .stats-cell { padding: 16px; }
+
+    /* Footer — stack on mobile */
+    .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
+    .footer-brand { grid-column: 1 / -1; }
 
     /* Buttons */
     .btn-lg { padding: 14px 20px; font-size: 14px; }
@@ -247,6 +275,9 @@ const CSS = `
 
   @media (max-width: 480px) {
     .container { padding: 0 12px; }
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .footer-grid { grid-template-columns: 1fr; }
+    .footer-brand { grid-column: 1; }
   }
 
 `;
@@ -769,12 +800,12 @@ function Footer({ go, openInfo }) {
   );
   return (
     <footer style={{ borderTop: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper)" }}>
-      <div className="container" style={{ padding: "56px 32px 32px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr repeat(3, 1fr)", gap: 48, marginBottom: 48 }}>
-          <div>
+      <div className="container" style={{ padding: "clamp(32px, 5vw, 56px) clamp(16px, 4vw, 32px) clamp(24px, 4vw, 32px)" }}>
+        <div className="footer-grid">
+          <div style={{ gridColumn: "1 / -1" }} className="footer-brand">
             <Logo onClick={() => go("home")} light />
-            <p style={{ fontSize: 13, lineHeight: 1.5, marginTop: 14, color: "oklch(0.7 0.01 80)", maxWidth: 340 }}>An Exeter-student-only ticket exchange. Built in Devon. Not affiliated with any venue.</p>
-            <div style={{ marginTop: 18 }}><FlatFeeBadge /></div>
+            <p style={{ fontSize: 13, lineHeight: 1.5, marginTop: 14, color: "oklch(0.7 0.01 80)", maxWidth: 340 }}>An Exeter-student-only ticket exchange. Not affiliated with any venue.</p>
+            <div style={{ marginTop: 16 }}><FlatFeeBadge /></div>
           </div>
           {[
             { title: "Marketplace", links: [{ l: "Browse listings", a: () => go("browse") }, { l: "Sell a ticket", a: () => go("sell") }, { l: "My wallet", a: () => go("wallet") }, { l: "Price alerts", a: () => go("alerts") }] },
@@ -782,17 +813,17 @@ function Footer({ go, openInfo }) {
             { title: "Company", links: [{ l: "About", a: () => openInfo("about") }, { l: "Terms & privacy", a: () => openInfo("terms") }] },
           ].map(({ title, links }) => (
             <div key={title}>
-              <div className="cap mono" style={{ color: "var(--accent)" }}>{title}</div>
-              <ul style={{ padding: 0, margin: "14px 0 0", display: "grid", gap: 10 }}>
+              <div className="cap mono" style={{ color: "var(--accent)", marginBottom: 14 }}>{title}</div>
+              <ul style={{ padding: 0, margin: 0, display: "grid", gap: 12 }}>
                 {links.map(({ l, a }) => <Link key={l} onClick={a}>{l}</Link>)}
               </ul>
             </div>
           ))}
         </div>
-        <hr style={{ border: 0, borderTop: "1px solid oklch(0.3 0 0)" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "24px 0 0", alignItems: "center" }}>
-          <span className="mono cap-sm" style={{ color: "oklch(0.6 0.01 80)" }}>© 2026 Exeticket Ltd · Made in Exeter, Devon</span>
-          <span className="mono cap-sm" style={{ color: "oklch(0.6 0.01 80)" }}>v2.4 · {new Date().toLocaleString("en-GB")}</span>
+        <hr style={{ border: 0, borderTop: "1px solid oklch(0.3 0 0)", margin: "32px 0 0" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, padding: "20px 0 0", alignItems: "center" }}>
+          <span className="mono cap-sm" style={{ color: "oklch(0.6 0.01 80)" }}>© 2026 Exeticket Ltd · Exeter, Devon</span>
+          <span className="mono cap-sm" style={{ color: "oklch(0.6 0.01 80)" }}>exeticket.com</span>
         </div>
       </div>
     </footer>
@@ -969,29 +1000,27 @@ function LiveStatsBar() {
 
   return (
     <section className="section">
-      <div className="container" style={{ padding: "48px 32px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderLeft: "1px solid var(--ink)" }}>
+      <div className="container" style={{ padding: "clamp(24px, 4vw, 48px) clamp(16px, 4vw, 32px)" }}>
+        <div className="stats-grid">
           {items.map((s, i) => (
-            <div key={i} style={{
-              borderRight: "1px solid var(--ink)", padding: "8px 24px",
+            <div key={i} className="stats-cell" style={{
               transition: "background .3s",
               background: pulse && s.live ? "oklch(0.96 0.05 150)" : "transparent",
             }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                <div className="serif" style={{ fontSize: 48, lineHeight: 1, fontStyle: "italic", fontWeight: 400 }}>
+                <div className="serif" style={{ fontSize: "clamp(32px, 5vw, 48px)", lineHeight: 1, fontStyle: "italic", fontWeight: 400 }}>
                   {s.value}
                 </div>
                 {s.live && (
                   <span style={{
                     width: 7, height: 7, borderRadius: "50%",
                     background: "var(--accent)", display: "inline-block",
-                    boxShadow: "0 0 0 0 var(--accent)",
                     animation: "pulse 2s ease-out infinite",
                     flexShrink: 0, marginBottom: 4,
                   }} />
                 )}
               </div>
-              <div className="cap mono" style={{ marginTop: 10, color: "var(--ink-mute)" }}>{s.label}</div>
+              <div className="cap mono" style={{ marginTop: 8, color: "var(--ink-mute)", fontSize: 10 }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -2605,10 +2634,22 @@ function AuthScreen({ go, onSignIn }) {
   const handleSubmit = async () => {
     setError(""); setLoading(true);
     if (tab === "signup") {
-      const { error: err } = await supabase.auth.signUp({
-        email, password, options: { emailRedirectTo: window.location.origin }
-      });
+      const { error: err } = await supabase.auth.signUp({ email, password });
       if (err) { setError(err.message); setLoading(false); return; }
+
+      // Send welcome/confirmation email via Resend directly — bypass Supabase SMTP
+      try {
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'verify',
+            to: email,
+            data: { link: window.location.origin }
+          })
+        });
+      } catch (e) { console.warn('Email send failed:', e); }
+
       setStage("verify");
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password });
@@ -2663,20 +2704,16 @@ function AuthScreen({ go, onSignIn }) {
     <div className="fade-in" className="auth-grid" style={{ minHeight: "calc(100vh - 60px)", display: "grid", gridTemplateColumns: "1fr 1fr" }}>
       <div className="auth-left"><LeftPanel /></div>
       <div className="auth-right" style={{ padding: "80px 64px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 16 }}>📬</div>
-        <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Check your inbox.</h2>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+        <h2 className="serif" style={{ fontSize: 36, fontStyle: "italic", fontWeight: 400, margin: "0 0 12px" }}>Account created.</h2>
         <p style={{ color: "var(--ink-mute)", fontSize: 15, lineHeight: 1.6, marginBottom: 24 }}>
-          We sent a verification link to <b style={{ fontFamily: "var(--mono)" }}>{email}</b>. Click the link to activate your account, then come back here to sign in.
+          Welcome to Exeticket. Your account is active — sign in now with your email and password.
         </p>
-        <div style={{ padding: "14px 16px", background: "var(--paper-2)", border: "1px solid var(--rule)", fontSize: 13, color: "var(--ink-mute)", lineHeight: 1.6 }}>
-          Not arrived? Check your spam. Still nothing?{" "}
-          <span style={{ textDecoration: "underline", cursor: "pointer", color: "var(--ink)" }}
-            onClick={async () => { await supabase.auth.resend({ type: "signup", email }); alert("Verification email resent."); }}>
-            Resend it
-          </span>.
-        </div>
-        <button className="btn btn-ghost btn-sm" style={{ marginTop: 20, alignSelf: "flex-start" }} onClick={() => { setStage("form"); setTab("signin"); }}>
-          Back to sign in
+        <button className="btn btn-accent" style={{ marginTop: 8 }} onClick={() => { setStage("form"); setTab("signin"); }}>
+          Sign in now →
+        </button>
+        <button className="btn btn-ghost btn-sm" style={{ marginTop: 10, alignSelf: "flex-start" }} onClick={() => { setStage("form"); setTab("signup"); }}>
+          ← Use a different email
         </button>
       </div>
     </div>
