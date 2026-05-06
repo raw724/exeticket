@@ -960,7 +960,7 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
       <section className="container" style={{ padding: "56px 32px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 24 }}>
           <h2 className="serif" style={{ fontSize: 32, margin: 0, fontStyle: "italic", fontWeight: 400 }}>Tonight & this week</h2>
-          <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all 47 events ↗</a>
+          <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all {events.length} events ↗</a>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 24 }}>
           <EventCard event={featured} onOpen={() => openEvent(featured)} large accent />
