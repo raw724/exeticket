@@ -1217,9 +1217,7 @@ function OfferModal({ listing, event, onClose }) {
 
 function DetailScreen({ event, go, setSelectedListing, openInfo, setPrefillSellEvent }) {
   const [offerListing, setOfferListing] = useState(null);
-  const [rawListings, setRawListings] = useState(
-    LISTINGS.filter(l => l.eventId === event.id || l.event_id === event.id)
-  );
+  const [rawListings, setRawListings] = useState([]);
   const [listingsLoading, setListingsLoading] = useState(true);
 
   useEffect(() => {
@@ -2200,7 +2198,7 @@ function SellLiveStep({ event, go }) {
 /* ─── BUYING TICKET CARD (wallet) ───────────────────────────────────────────── */
 function BuyingTicketCard({ item, ev }) {
   const [showTicket, setShowTicket] = useState(false);
-  const listing = LISTINGS.find(l => l.eventId === ev.id) || LISTINGS[0];
+  const listing = { seller: item.sellerId || "seller", id: item.id };
   const barcode = (item.id + ev.id).toUpperCase().replace(/[^A-Z0-9]/g,'').padEnd(18,'X').slice(0,18);
 
   return (
@@ -2335,13 +2333,15 @@ function WalletScreen({ go }) {
     <div className="fade-in container" style={{ padding: "40px 32px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <div>
-          <div className="cap mono" style={{ color: "var(--ink-mute)" }}>§ Wallet</div>
+          <div className="cap mono" style={{ color: "var(--ink-mute)" }}>Wallet</div>
           <h1 className="serif" style={{ fontSize: 64, fontStyle: "italic", fontWeight: 400, margin: "10px 0 0", letterSpacing: "-0.02em", lineHeight: 0.95 }}>Your tickets.</h1>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div className="cap mono" style={{ color: "var(--ink-mute)" }}>Balance · pending payouts</div>
-          <div className="serif" style={{ fontSize: 48, fontStyle: "italic", lineHeight: 1 }}>£7.00</div>
-          <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>Releases after door scan</div>
+          <div className="cap mono" style={{ color: "var(--ink-mute)" }}>Pending payouts</div>
+          <div className="serif" style={{ fontSize: 48, fontStyle: "italic", lineHeight: 1 }}>
+            {fmt(tickets.selling.filter(t => t.status === "SOLD" || t.status === "sold").reduce((a, t) => a + (t.price || 0), 0))}
+          </div>
+          <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>Releases 48hrs after event</div>
         </div>
       </div>
       <hr className="rule-ink" style={{ margin: "24px 0" }} />
@@ -2361,15 +2361,15 @@ function WalletScreen({ go }) {
       <div style={{ padding: "32px 0", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 380px), 1fr))", gap: 20 }}>
         {list.length === 0 && <div style={{ padding: 48, textAlign: "center", color: "var(--ink-mute)", gridColumn: "span 2" }}>Nothing here yet.</div>}
         {list.map((item) => {
-          const ev = EVENTS.find((e) => e.id === item.eventId);
+          const ev = item.event || { title: item.eventId || "Unknown event", venue: "", date: "", door: "" };
           const statusColor = { "ESCROW HELD": "var(--accent)", LIVE: "var(--accent)", SOLD: "var(--ok)", USED: "var(--ink-mute)" }[item.status] || "var(--paper)";
           return (
             <div key={item.id} style={{ border: "1px solid var(--ink)" }}>
               <div style={{ padding: 18, borderBottom: "1px solid var(--ink)", display: "grid", gridTemplateColumns: "1fr auto", gap: 14, alignItems: "flex-start" }}>
                 <div style={{ minWidth: 0 }}>
                   <div className="cap mono" style={{ color: "var(--ink-mute)" }}>{item.id.toUpperCase()}</div>
-                  <div className="serif" style={{ fontSize: 20, fontWeight: 400, lineHeight: 1.1, marginTop: 4 }}>{ev.title}</div>
-                  <div className="mono cap-sm" style={{ color: "var(--ink-mute)", marginTop: 6 }}>{ev.venue} · {ev.date} · {ev.door}</div>
+                  <div className="serif" style={{ fontSize: 20, fontWeight: 400, lineHeight: 1.1, marginTop: 4 }}>{ev?.title || "Event"}</div>
+                  <div className="mono cap-sm" style={{ color: "var(--ink-mute)", marginTop: 6 }}>{[ev?.venue, ev?.date, ev?.door].filter(Boolean).join(" · ")}</div>
                 </div>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 10, letterSpacing: ".08em", padding: "4px 8px", border: "1px solid var(--ink)", background: statusColor, color: item.status === "SOLD" ? "var(--paper)" : "var(--ink)", whiteSpace: "nowrap", alignSelf: "flex-start" }}>{item.status}</span>
               </div>
@@ -2414,10 +2414,7 @@ function WalletScreen({ go }) {
 
 /* ─── ALERTS SCREEN ──────────────────────────────────────────────────────────── */
 function AlertsScreen({ go }) {
-  const [alerts, setAlerts] = useState([
-    { id:"al-01", eventId:"tp-thu-may7",    maxPrice:8.50,  autoBuy:true,  cardLast4:"4411", active:true, createdAt:"Mon, 04 May" },
-    { id:"al-02", eventId:"au-summer-ball", maxPrice:60.00, autoBuy:false, cardLast4:null,   active:true, createdAt:"Sat, 02 May" },
-  ]);
+  const [alerts, setAlerts] = useState([]);
   const [showNew, setShowNew] = useState(false);
   const [newEv, setNewEv]     = useState(EVENTS[0]);
   const [newPrice, setNewPrice] = useState("");
@@ -2467,7 +2464,7 @@ function AlertsScreen({ go }) {
 
       <div style={{ display:"grid", gap:12 }}>
         {alerts.map((a) => {
-          const ev   = EVENTS.find(e => e.id === a.eventId);
+          const ev   = { title: a.eventTitle || a.eventId || "Event", venue: a.eventVenue || "", date: a.eventDate || "" };
           const lst  = LISTINGS.filter(l => l.eventId === a.eventId);
           const floor = lst.length ? Math.min(...lst.map(l => l.price)) : null;
           const triggered = floor !== null && floor <= a.maxPrice;
@@ -2994,7 +2991,7 @@ function AdminScreen({ go }) {
           })}
         </div>
         {selected && (() => {
-          const ev = EVENTS.find((e) => e.id === selected.eventId);
+          const ev = selected.event || { title: selected.eventId || "Event", venue: "", date: "" };
           return (
             <div style={{ border: "1px solid var(--ink)" }}>
               <div style={{ padding: 24, borderBottom: "1px solid var(--ink)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
