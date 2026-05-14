@@ -283,46 +283,11 @@ const CSS = `
 `;
 
 /* ─── MOCK DATA ─────────────────────────────────────────────────────────────── */
-const EVENTS = [
-  { id:"tp-thu-may7", title:"Timepiece — Cheesy Tuesday", venue:"Timepiece", date:"Thu 07 May 2026", iso:"2026-05-07T22:00:00", door:"22:00", close:"03:00", tag:"Tuesday Institution", listings:47, floor:8.50, ceiling:14.00, blurb:"The Tuesday that's somehow on a Thursday this week. Cheese, sticky floors, the works.", img:"Crowd at TP, smoke + green lasers" },
-  { id:"move-fri-may8", title:"MOVE x Sub Focus", venue:"Move @ Lemmy", date:"Fri 08 May 2026", iso:"2026-05-08T23:00:00", door:"23:00", close:"04:00", tag:"DnB / Bass", listings:23, floor:22.00, ceiling:38.50, blurb:"Move's biggest booking of the term. Tier 3 already gone on the official site.", img:"Sub Focus on decks, hands up" },
-  { id:"phoenix-sat-may9", title:"Phoenix Late — Disco Disco", venue:"Exeter Phoenix", date:"Sat 09 May 2026", iso:"2026-05-09T22:30:00", door:"22:30", close:"02:30", tag:"Disco / House", listings:11, floor:6.00, ceiling:11.00, blurb:"Mirrorball, glitter, the Phoenix back room. Smaller capacity, sells out quietly.", img:"Mirrorball over crowd" },
-  { id:"au-summer-ball", title:"AU Summer Ball 2026", venue:"Westpoint Arena", date:"Wed 13 May 2026", iso:"2026-05-13T19:00:00", door:"19:00", close:"01:00", tag:"Sports Socials", listings:84, floor:45.00, ceiling:89.00, blurb:"The big one. Coaches from campus. Don't lose your wristband.", img:"Westpoint stage, fairy lights" },
-  { id:"cavern-indie", title:"The Cavern — Slowdive (DJ Set)", venue:"The Cavern", date:"Sun 10 May 2026", iso:"2026-05-10T20:00:00", door:"20:00", close:"01:00", tag:"Indie / Live", listings:6, floor:14.00, ceiling:22.00, blurb:"Intimate, stickered walls, the smell of old amps.", img:"Cavern stage, red light" },
-  { id:"unit-techno", title:"UNIT — Anfisa Letyago", venue:"Unit 1", date:"Sat 16 May 2026", iso:"2026-05-16T23:00:00", door:"23:00", close:"05:00", tag:"Techno", listings:19, floor:18.00, ceiling:32.00, blurb:"All-night-long set. Bring water, bring patience.", img:"Strobe wall + silhouettes" },
-];
+const EVENTS = [];
 
-const LISTINGS = [
-  { id:"lst-001", eventId:"tp-thu-may7",     seller:"marlow.h",  price:9.50,  type:"Standard Entry",  verified:true, posted:"12 min ago", escrow:"held" },
-  { id:"lst-002", eventId:"tp-thu-may7",     seller:"j.patel",   price:8.50,  type:"Standard Entry",  verified:true, posted:"34 min ago", escrow:"held" },
-  { id:"lst-003", eventId:"tp-thu-may7",     seller:"rosa.k",    price:12.00, type:"Standard Entry",  verified:true, posted:"1 h ago",    escrow:"held" },
-  { id:"lst-004", eventId:"move-fri-may8",   seller:"t.okafor",  price:24.00, type:"Tier 3",          verified:true, posted:"5 min ago",  escrow:"held" },
-  { id:"lst-005", eventId:"move-fri-may8",   seller:"alice.w",   price:28.00, type:"Tier 3 + Cloak",  verified:true, posted:"22 min ago", escrow:"held" },
-  { id:"lst-006", eventId:"move-fri-may8",   seller:"zane.b",    price:38.50, type:"VIP Booth",       verified:true, posted:"2 h ago",    escrow:"held" },
-  { id:"lst-007", eventId:"phoenix-sat-may9",seller:"neha.s",    price:7.00,  type:"Standard",        verified:true, posted:"8 min ago",  escrow:"held" },
-  { id:"lst-008", eventId:"au-summer-ball",  seller:"h.weston",  price:65.00, type:"Standard Ticket", verified:true, posted:"3 h ago",    escrow:"held" },
-  { id:"lst-009", eventId:"au-summer-ball",  seller:"m.alvarez", price:72.00, type:"Standard Ticket", verified:true, posted:"yesterday",  escrow:"held" },
-  { id:"lst-010", eventId:"cavern-indie",    seller:"fin.a",     price:16.00, type:"Standing",        verified:true, posted:"44 min ago", escrow:"held" },
-  { id:"lst-011", eventId:"unit-techno",     seller:"yui.k",     price:22.00, type:"Standard",        verified:true, posted:"1 h ago",    escrow:"held" },
-  { id:"lst-012", eventId:"tp-thu-may7",     seller:"owen.d",    price:10.00, type:"Standard Entry",  verified:true, posted:"3 min ago",  escrow:"held" },
-  { id:"lst-013", eventId:"move-fri-may8",   seller:"rosa.k",    price:32.00, type:"Standard",        verified:true, posted:"just now",  escrow:"held", decay:{ start:32.00, floor:20.00, endsAt:"2026-05-08T23:00:00" } },
-  { id:"lst-014", eventId:"au-summer-ball",  seller:"m.alvarez", price:80.00, type:"Standard Ticket", verified:true, posted:"2 h ago",   escrow:"held", decay:{ start:80.00, floor:55.00, endsAt:"2026-05-13T19:00:00" } },
-];
+const LISTINGS = [];
 
-const SELLER_REP = {
-  "marlow.h":  { sales: 14, disputes: 0, scanRate: 100, tier: "trusted" },
-  "j.patel":   { sales: 8,  disputes: 0, scanRate: 100, tier: "trusted" },
-  "rosa.k":    { sales: 3,  disputes: 1, scanRate: 96,  tier: "standard" },
-  "t.okafor":  { sales: 22, disputes: 0, scanRate: 100, tier: "trusted" },
-  "alice.w":   { sales: 6,  disputes: 1, scanRate: 94,  tier: "standard" },
-  "zane.b":    { sales: 2,  disputes: 2, scanRate: 88,  tier: "new" },
-  "neha.s":    { sales: 11, disputes: 0, scanRate: 100, tier: "trusted" },
-  "h.weston":  { sales: 5,  disputes: 0, scanRate: 100, tier: "trusted" },
-  "m.alvarez": { sales: 4,  disputes: 1, scanRate: 97,  tier: "standard" },
-  "fin.a":     { sales: 19, disputes: 0, scanRate: 100, tier: "trusted" },
-  "yui.k":     { sales: 7,  disputes: 0, scanRate: 99,  tier: "trusted" },
-  "owen.d":    { sales: 1,  disputes: 0, scanRate: 100, tier: "new" },
-};
+const SELLER_REP = {};
 
 function sellerTierBadge(handle) {
   const rep = SELLER_REP[handle];
@@ -344,36 +309,11 @@ function sellerTierBadge(handle) {
   return null;
 }
 
-const FEED = [
-  { t:"now",  msg:"Sold — TP Thu, £9.50",         kind:"sold" },
-  { t:"32s",  msg:"New listing — MOVE Fri, £24.00", kind:"new" },
-  { t:"1m",   msg:"Verified ✓ — Phoenix Late, £7.00", kind:"verify" },
-  { t:"2m",   msg:"Sold — AU Summer Ball, £65.00", kind:"sold" },
-  { t:"3m",   msg:"Price drop — TP Thu £12 → £10", kind:"drop" },
-  { t:"4m",   msg:"Verified ✓ — UNIT Sat, £22.00", kind:"verify" },
-  { t:"6m",   msg:"Sold — Cavern Sun, £16.00",    kind:"sold" },
-  { t:"8m",   msg:"New listing — TP Thu Standard £12.00", kind:"new" },
-];
+const FEED = [];
 
-const MY_TICKETS = {
-  buying: [
-    { id:"tx-201", eventId:"move-fri-may8", price:24.00, status:"ESCROW HELD", sub:"Releases on door check-in · Fri 23:00" }
-  ],
-  selling: [
-    { id:"tx-101", eventId:"tp-thu-may7",     price:9.50,  status:"LIVE", sub:"Listed 12 min ago · 0 watchers", views:4 },
-    { id:"tx-102", eventId:"phoenix-sat-may9", price:7.00,  status:"SOLD", sub:"Sold 32 min ago · payout pending check-in", views:18 },
-  ],
-  attended: [
-    { id:"tx-301", eventId:"cavern-indie", price:14.00, status:"USED", sub:"Sun 10 May · Entry confirmed 20:14" }
-  ],
-};
+const MY_TICKETS = { buying: [], selling: [], attended: [] };
 
-const DISPUTES = [
-  { id:"DSP-7711", eventId:"move-fri-may8",    buyer:"kira.l",  seller:"alice.w",  reason:"QR not scanning at door",          opened:"2m ago",    severity:"high",   status:"open" },
-  { id:"DSP-7710", eventId:"tp-thu-may7",      buyer:"sam.t",   seller:"owen.d",   reason:"Duplicate ticket suspected",        opened:"14m ago",   severity:"high",   status:"investigating" },
-  { id:"DSP-7708", eventId:"au-summer-ball",   buyer:"p.green", seller:"m.alvarez",reason:"Wrong event date on screenshot",    opened:"1h ago",    severity:"medium", status:"open" },
-  { id:"DSP-7705", eventId:"phoenix-sat-may9", buyer:"ines.m",  seller:"neha.s",   reason:"Buyer didn't show — refund?",       opened:"yesterday", severity:"low",    status:"review" },
-];
+const DISPUTES = [];
 
 const INFO_CONTENT = {
   escrow: { title:"How escrow works", body:[
@@ -390,13 +330,12 @@ const INFO_CONTENT = {
   ]},
   disputes: { title:"Dispute resolution", body:[
     ["Open from Wallet","On any ticket in your Wallet you can open a dispute. Seller payout is frozen the moment you do."],
-    ["Evidence","Attach screenshots, door-staff names, anything relevant. We pull the ticket history server-side automatically."],
-    ["Trust & Safety review","A real human (a final-year Exeter student paid by us) reviews each dispute. No bots."],
-    ["Outcome","98.1% of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed."],
+    ["Evidence","Attach any screenshots or relevant information you have. We pull the full ticket and transaction history automatically."],
+    ["Trust & Safety review","Every dispute is reviewed by a member of the Exeticket team. We investigate both sides before making a decision."],
+    ["Outcome","The large majority of disputes are resolved in favour of the buyer. Sellers who repeatedly trigger disputes are removed from the platform."],
   ]},
   verified: { title:"Verified students", body:[
-    ["One account per student","Sign-up requires a valid @exeter.ac.uk email and a one-off magic link. We do not store passwords."],
-    ["Account age signal","New accounts can buy immediately, but selling requires 7 days of account age. Reduces sock-puppet abuse."],
+    ["One account per student","Sign-up requires a valid @exeter.ac.uk email address. Your email is verified before your account is activated."],
     ["No off-platform deals","Trying to push a deal off-platform (WhatsApp, Insta) gets you banned. Both sides."],
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
@@ -1039,7 +978,7 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
       .catch(() => {}); // keep mock data if API not deployed yet
   }, []);
 
-  const featured = events[0];
+  const featured = events[0] || null;
   const more = events.slice(1);
   const openEvent = (ev) => { setSelectedEvent(ev); go("detail"); };
 
@@ -2984,8 +2923,26 @@ function AccountScreen({ go, user, onSignOut }) {
 /* ─── ADMIN SCREEN ───────────────────────────────────────────────────────────── */
 function AdminScreen({ go }) {
   const [filter, setFilter] = useState("open");
-  const [selected, setSelected] = useState(DISPUTES[0]);
-  const filtered = DISPUTES.filter((d) => filter === "all" || d.status === filter);
+  const [disputes, setDisputes] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const session = supabase.auth.session ? supabase.auth.session() : null;
+    const token = session?.access_token;
+    if (!token) { setLoading(false); return; }
+    fetch(`/api/disputes?status=${filter === "all" ? "" : filter}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.disputes) { setDisputes(data.disputes); if (data.disputes[0]) setSelected(data.disputes[0]); }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [filter]);
+
+  const filtered = disputes;
 
   return (
     <div className="fade-in container" style={{ padding: "40px 32px" }}>
@@ -2995,7 +2952,7 @@ function AdminScreen({ go }) {
           <h1 className="serif" style={{ fontSize: 64, fontStyle: "italic", fontWeight: 400, margin: "10px 0 0", letterSpacing: "-0.02em", lineHeight: 0.95 }}>Disputes desk.</h1>
         </div>
         <div style={{ display: "flex", gap: 24 }}>
-          {[["4", "Open"], ["11", "This week"], ["2.4h", "Avg. resolution"], ["98.1%", "Buyer-favoured"]].map(([k, v]) => (
+          {[[String(disputes.filter(d=>d.status==="open").length), "Open"], [String(disputes.length), "Total"], ["—", "Avg. resolution"], ["—", "Buyer-favoured"]].map(([k, v]) => (
             <div key={k} style={{ textAlign: "right" }}>
               <div className="serif" style={{ fontSize: 32, fontStyle: "italic", lineHeight: 1 }}>{k}</div>
               <div className="cap-sm mono" style={{ color: "var(--ink-mute)" }}>{v}</div>
