@@ -1008,17 +1008,28 @@ function HomeScreen({ go, setSelectedEvent, openInfo }) {
       <section className="container" style={{ padding: "56px 32px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 24 }}>
           <h2 className="serif" style={{ fontSize: 32, margin: 0, fontStyle: "italic", fontWeight: 400 }}>Tonight & this week</h2>
-          <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all 47 events ↗</a>
+          {events.length > 0 && <a className="cap mono" style={{ cursor: "pointer" }} onClick={() => go("browse")}>See all {events.length} events ↗</a>}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16 }}>
-          <EventCard event={featured} onOpen={() => openEvent(featured)} large accent />
-          <div style={{ display: "grid", gap: 24, gridTemplateRows: "1fr 1fr" }}>
-            {more.slice(0, 2).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
+        {events.length === 0 ? (
+          <div style={{ padding: "64px 24px", textAlign: "center", border: "1px solid var(--rule)", background: "var(--paper-2)" }}>
+            <div style={{ fontSize: 36, marginBottom: 16 }}>🎫</div>
+            <div style={{ fontWeight: 600, fontSize: 18, marginBottom: 8 }}>No events listed yet</div>
+            <div style={{ color: "var(--ink-mute)", fontSize: 15, marginBottom: 24 }}>Be the first to list a ticket — paste a Fixr or Fatsoma link to add an event.</div>
+            <button className="btn btn-accent" onClick={() => go("sell")}>List a ticket →</button>
           </div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, marginTop: 16 }}>
-          {more.slice(2, 5).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
-        </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", gap: 16 }}>
+              {featured && <EventCard event={featured} onOpen={() => openEvent(featured)} large accent />}
+              <div style={{ display: "grid", gap: 16 }}>
+                {more.slice(0, 2).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 16, marginTop: 16 }}>
+              {more.slice(2, 5).map((ev) => <EventCard key={ev.id} event={ev} onOpen={() => openEvent(ev)} />)}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="section" style={{ background: "var(--ink)", color: "var(--paper)" }}>
