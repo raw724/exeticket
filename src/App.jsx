@@ -1452,8 +1452,8 @@ function BuyScreen({ event, listing, go }) {
 
   useEffect(() => {
     if (step === 1 && !clientSecret) {
-      const session = supabase.auth.session ? supabase.auth.session() : null;
-      const token = session?.access_token || '';
+      supabase.auth.getSession().then(({ data: { session: buySession } }) => {
+      const token = buySession?.access_token || '';
       fetch('/api/create-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -1463,7 +1463,7 @@ function BuyScreen({ event, listing, go }) {
           eventId:      event.id,
           eventTitle:   event.title,
           sellerId:     listing.sellerId || listing.seller_id || '',
-          buyerEmail:   supabase.auth.user?.()?.email || '',
+          buyerEmail:   buySession?.user?.email || '',
         }),
       })
         .then(r => r.json())
@@ -1599,8 +1599,8 @@ function SellScreen({ go, prefillEvent }) {
           {step === 1 && <SellUploadStep event={event} onDone={(file, url) => { setUploadedFile(file); setScreenshotUrl(url || ''); setStep(2); }} onBack={() => setStep(0)} />}
           {step === 2 && <SellVerifyStep event={event} uploadedFile={uploadedFile} onDone={() => setStep(3)} onFail={() => setStep(1)} />}
           {step === 3 && <SellPriceStep event={event} price={price} setPrice={setPrice} onDone={async () => {
-        const session = supabase.auth.session ? supabase.auth.session() : null;
-        const token = session?.access_token;
+        const { data: { session: sellSession } } = await supabase.auth.getSession();
+        const token = sellSession?.access_token;
         if (token) {
           await fetch('/api/listings', {
             method: 'POST',
@@ -1813,12 +1813,7 @@ function AddEventModal({ onClose, onAdd }) {
       setFetched(result);
     } catch (e) {
       // If backend isn't deployed yet, show a clear message rather than a crash
-      if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("404")) {
-        setError("The import backend isn't running yet. See setup instructions — this will work once /api/event-import is deployed.");
-      } else {
-        // Show the actual API error
-        setError(e.message || "Failed to import event. Check the URL and try again.");
-      }
+      setError(e.message || "Failed to import event. Check the URL and try again.");
     } finally {
       setLoading(false);
     }
@@ -2229,12 +2224,12 @@ function DisputeButton({ item, ev }) {
     if (!reason) return;
     setStatus("submitting");
     try {
-      const s = supabase.auth.session ? supabase.auth.session() : null;
+      const { data: { session: ds } } = await supabase.auth.getSession();
       const res = await fetch("/api/disputes", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: s ? `Bearer ${s.access_token}` : "",
+          Authorization: ds ? `Bearer ${ds.access_token}` : "",
         },
         body: JSON.stringify({
           transactionId: item.id,
@@ -2418,13 +2413,13 @@ function WalletScreen({ go }) {
   const [walletLoading, setWalletLoading] = useState(true);
 
   useEffect(() => {
-    const session = supabase.auth.session ? supabase.auth.session() : null;
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
     const token = session?.access_token;
     if (!token) { setWalletLoading(false); return; }
 
     Promise.all([
       fetch('/api/listings?sellerId=me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
-      fetch('/api/transactions?role=buyer', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
+      fetch('/api/listings?route=transactions&role=buyer', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()),
     ]).then(([sellerData, buyerData]) => {
       setTickets(prev => ({
         ...prev,
@@ -2975,15 +2970,16 @@ function AccountScreen({ go, user, onSignOut }) {
   ];
 
   useEffect(() => {
-    const s = supabase.auth.session ? supabase.auth.session() : null;
-    if (!s) return;
-    supabase.from("users").select("*").eq("id", s.user.id).single()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+    if (!session) return;
+    supabase.from("users").select("*").eq("id", session.user.id).single()
       .then(({ data }) => {
         if (data) {
           setProfileData({ firstName: data.first_name || "", courseYear: data.course_year || "" });
           setPayoutSetup(data.stripe_onboarding_complete || false);
         }
       }).catch(() => {});
+    }).catch(() => {});
   }, []);
 
   const startEdit = (field, current) => { setEditingField(field); setEditValue(current || ""); };
@@ -2991,9 +2987,9 @@ function AccountScreen({ go, user, onSignOut }) {
   const saveField = async (field, dbKey) => {
     setSaving(true);
     try {
-      const s = supabase.auth.session ? supabase.auth.session() : null;
-      if (s) {
-        await supabase.from("users").update({ [dbKey]: editValue }).eq("id", s.user.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        await supabase.from("users").update({ [dbKey]: editValue }).eq("id", session.user.id);
         setProfileData(p => ({ ...p, [field]: editValue }));
       }
     } catch (e) { console.error(e); }
@@ -3004,17 +3000,26 @@ function AccountScreen({ go, user, onSignOut }) {
   const handleSetupPayouts = async () => {
     setPayoutLoading(true);
     try {
-      const s = supabase.auth.session ? supabase.auth.session() : null;
-      if (!s) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { alert("Please sign in first."); setPayoutLoading(false); return; }
       const res = await fetch("/api/connect-seller", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.access_token}` },
-        body: JSON.stringify({ userId: s.user.id, email: s.user.email })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ userId: session.user.id, email: session.user.email })
       });
       const data = await res.json();
-      if (data.onboardingUrl) window.location.href = data.onboardingUrl;
-    } catch (e) { console.error(e); }
-    setPayoutLoading(false);
+      console.log("connect-seller response:", data);
+      if (data.onboardingUrl) {
+        window.location.href = data.onboardingUrl;
+      } else {
+        alert("Error: " + (data.error || "No onboarding URL returned"));
+      }
+    } catch (e) {
+      console.error("Payout setup error:", e);
+      alert("Failed to set up payouts: " + e.message);
+    } finally {
+      setPayoutLoading(false);
+    }
   };
 
   const EditableRow = ({ label, value, field, dbKey, placeholder }) => (
@@ -3130,7 +3135,7 @@ function AdminScreen({ go }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const session = supabase.auth.session ? supabase.auth.session() : null;
+    supabase.auth.getSession().then(({ data: { session } }) => {
     const token = session?.access_token;
     if (!token) { setLoading(false); return; }
     fetch(`/api/disputes?status=${filter === "all" ? "" : filter}`, {
@@ -3253,7 +3258,25 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [infoModal, setInfoModal] = useState(null);
 
-  const go = useCallback((r) => { setRoute(r); window.scrollTo({ top: 0, behavior: "instant" }); }, []);
+  const go = useCallback((r) => {
+    setRoute(r);
+    window.scrollTo({ top: 0, behavior: "instant" });
+    // Push to browser history so back button works
+    window.history.pushState({ route: r }, "", `/${r === "home" ? "" : r}`);
+  }, []);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePop = (e) => {
+      const route = e.state?.route || "home";
+      setRoute(route);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    };
+    window.addEventListener("popstate", handlePop);
+    // Set initial history state
+    window.history.replaceState({ route: "home" }, "", "/");
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
   const openInfo = useCallback((kind) => setInfoModal(kind), []);
 
   // ── Real Supabase session on load ─────────────────────────────────────────
