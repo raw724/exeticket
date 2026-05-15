@@ -340,7 +340,7 @@ const INFO_CONTENT = {
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
   about: { title:"About Exeticket", body:[
-    ["Built in Exeter","Exeticket was started by a first-year Computer Science student at Exeter after watching a friend lose £85 in a Facebook ticket scam in 2025. Built from a dorm room, for Exeter students who deserve better than group chat ticket roulette."],
+    ["Built in Exeter","Exeticket was started by a first-year Computer Science student at Exeter after watching a friend lose £85 in a Facebook Marketplace ticket scam in 2024. Built from a dorm room, for Exeter students who deserve better than group chat ticket roulette."],
     ["Why a flat fee","Percentage fees punish people selling higher-priced tickets. 99p covers what it costs to run the platform — nothing more. Simple, fair, fixed."],
     ["Where we run","Exeter only. The whole point is local trust — keeping it small keeps it accountable. No plans to expand."],
     ["Funded by","100% self-funded. No investors, no VC money, no corporate backing. Built and paid for out of pocket."],
@@ -1689,10 +1689,21 @@ function SellPickEvent({ onPick }) {
 // See the manual steps at the bottom of this file for backend setup.
 
 function extractFixrEventId(url) {
-  // Fixr URLs: https://fixr.co/event/event-name-here--12345678
-  // The numeric ID is after the last --
-  const match = url.match(/--(\d+)\/?$/);
-  return match ? match[1] : null;
+  // Fixr URL formats:
+  // https://fixr.co/event/event-name--12345678
+  // https://fixr.co/event/event-name-12345678
+  // https://fixr.co/event/12345678
+  // https://app.fixr.co/events/12345678
+  // Try double-dash first, then single digit suffix, then pure number path
+  const doubleDash = url.match(/--(\d{5,})\/?(?:\?.*)?$/);
+  if (doubleDash) return doubleDash[1];
+  const digitSuffix = url.match(/-(\d{5,})\/?(?:\?.*)?$/);
+  if (digitSuffix) return digitSuffix[1];
+  const purePath = url.match(/\/(\d{5,})\/?(?:\?.*)?$/);
+  if (purePath) return purePath[1];
+  // Try any standalone number in the URL
+  const anyNum = url.match(/(\d{6,})/);
+  return anyNum ? anyNum[1] : null;
 }
 
 function extractFatsomaEventId(url) {
@@ -1790,11 +1801,13 @@ function AddEventModal({ onClose, onAdd }) {
       let result;
       if (platform === "Fixr") {
         const id = extractFixrEventId(url);
-        if (!id) throw new Error("Couldn't find a Fixr event ID in that URL. Make sure you paste the full event page link.");
+        if (!id) throw new Error("Couldn't find a Fixr event ID in that URL. Try the full event page URL e.g. fixr.co/event/event-name--12345678");
+        console.log("Fixr event ID extracted:", id);
         result = await fetchFixrEvent(id);
       } else {
         const id = extractFatsomaEventId(url);
-        if (!id) throw new Error("Couldn't find a Fatsoma event ID in that URL. Make sure you paste the full event page link.");
+        if (!id) throw new Error("Couldn't find a Fatsoma event ID in that URL. Try the full event page URL e.g. fatsoma.com/e/abc123/event-name");
+        console.log("Fatsoma event ID extracted:", id);
         result = await fetchFatsomaEvent(id);
       }
       setFetched(result);
@@ -1803,7 +1816,8 @@ function AddEventModal({ onClose, onAdd }) {
       if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError") || e.message.includes("404")) {
         setError("The import backend isn't running yet. See setup instructions — this will work once /api/event-import is deployed.");
       } else {
-        setError(e.message);
+        // Show the actual API error
+        setError(e.message || "Failed to import event. Check the URL and try again.");
       }
     } finally {
       setLoading(false);
@@ -2195,6 +2209,103 @@ function SellLiveStep({ event, go }) {
   );
 }
 
+/* ─── DISPUTE BUTTON ─────────────────────────────────────────────────────────── */
+function DisputeButton({ item, ev }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [detail, setDetail] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | submitting | done | error
+  const [errMsg, setErrMsg] = useState("");
+
+  const reasons = [
+    "QR code not scanning at door",
+    "Wrong event / date on ticket",
+    "Duplicate ticket — already used",
+    "Could not attend — seller misrepresented ticket",
+    "Other",
+  ];
+
+  const handleSubmit = async () => {
+    if (!reason) return;
+    setStatus("submitting");
+    try {
+      const s = supabase.auth.session ? supabase.auth.session() : null;
+      const res = await fetch("/api/disputes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: s ? `Bearer ${s.access_token}` : "",
+        },
+        body: JSON.stringify({
+          transactionId: item.id,
+          reason,
+          evidenceText: detail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to open dispute");
+      setStatus("done");
+    } catch (e) {
+      setErrMsg(e.message);
+      setStatus("error");
+    }
+  };
+
+  if (!open) return (
+    <button onClick={() => setOpen(true)} style={{
+      all: "unset", cursor: "pointer", fontSize: 12, color: "var(--ink-mute)",
+      textDecoration: "underline", marginTop: 10, display: "block",
+      textDecorationStyle: "dotted",
+    }}>
+      Something wrong with this ticket? Open a dispute
+    </button>
+  );
+
+  return (
+    <div className="fade-in" style={{ marginTop: 14, border: "1px solid var(--rule)", padding: 16, background: "var(--paper-2)" }}>
+      {status === "done" ? (
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14, color: "var(--ok)", marginBottom: 6 }}>✓ Dispute opened</div>
+          <div style={{ fontSize: 13, color: "var(--ink-mute)", lineHeight: 1.5 }}>
+            Your dispute has been filed. The seller's payout is frozen while we investigate. We'll be in touch via email.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12 }}>Open a dispute</div>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 6 }}>Reason</label>
+            <div style={{ display: "grid", gap: 6 }}>
+              {reasons.map(r => (
+                <label key={r} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13, cursor: "pointer" }}>
+                  <input type="radio" name="dispute-reason" value={r} checked={reason === r}
+                    onChange={() => setReason(r)} style={{ accentColor: "var(--accent)" }} />
+                  {r}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", display: "block", marginBottom: 6 }}>Additional details (optional)</label>
+            <textarea className="field" rows={3} value={detail} onChange={e => setDetail(e.target.value)}
+              placeholder="Describe what happened..." style={{ fontSize: 13, resize: "vertical" }} />
+          </div>
+          {status === "error" && (
+            <div style={{ color: "var(--danger)", fontSize: 13, marginBottom: 10 }}>{errMsg}</div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn btn-sm" style={{ background: "var(--danger)", color: "white", borderColor: "var(--danger)" }}
+              disabled={!reason || status === "submitting"} onClick={handleSubmit}>
+              {status === "submitting" ? "Submitting…" : "Submit dispute"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ─── BUYING TICKET CARD (wallet) ───────────────────────────────────────────── */
 function BuyingTicketCard({ item, ev }) {
   const [showTicket, setShowTicket] = useState(false);
@@ -2234,6 +2345,7 @@ function BuyingTicketCard({ item, ev }) {
         <div><div style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", marginBottom: 2 }}>Doors in</div><Countdown iso={ev.iso} /></div>
         <div style={{ textAlign: "right" }}><div style={{ fontSize: 11, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-mute)", marginBottom: 2 }}>Paid</div><div style={{ fontSize: 20, fontFamily: "var(--serif)" }}>{fmt(item.price + 0.99)}</div></div>
       </div>
+      <DisputeButton item={item} ev={ev} />
 
       {/* Full ticket screenshot modal */}
       {showTicket && (
@@ -2848,24 +2960,100 @@ function AuthScreen({ go, onSignIn }) {
 
 /* ─── ACCOUNT SCREEN ─────────────────────────────────────────────────────────── */
 function AccountScreen({ go, user, onSignOut }) {
-  const [section, setSection] = useState("profile");
-  const sections = [{ id: "profile", label: "Profile" }, { id: "payouts", label: "Payout details" }, { id: "security", label: "Security" }, { id: "notifications", label: "Notifications" }, { id: "data", label: "Data & privacy" }];
+  const [section, setSection]       = useState("profile");
+  const [profileData, setProfileData] = useState({ firstName: "", courseYear: "" });
+  const [editingField, setEditingField] = useState(null);
+  const [editValue, setEditValue]   = useState("");
+  const [saving, setSaving]         = useState(false);
+  const [payoutSetup, setPayoutSetup] = useState(false);
+  const [payoutLoading, setPayoutLoading] = useState(false);
+
+  const sections = [
+    { id: "profile",       label: "Profile" },
+    { id: "payouts",       label: "Payout details" },
+    { id: "notifications", label: "Notifications" },
+  ];
+
+  useEffect(() => {
+    const s = supabase.auth.session ? supabase.auth.session() : null;
+    if (!s) return;
+    supabase.from("users").select("*").eq("id", s.user.id).single()
+      .then(({ data }) => {
+        if (data) {
+          setProfileData({ firstName: data.first_name || "", courseYear: data.course_year || "" });
+          setPayoutSetup(data.stripe_onboarding_complete || false);
+        }
+      }).catch(() => {});
+  }, []);
+
+  const startEdit = (field, current) => { setEditingField(field); setEditValue(current || ""); };
+
+  const saveField = async (field, dbKey) => {
+    setSaving(true);
+    try {
+      const s = supabase.auth.session ? supabase.auth.session() : null;
+      if (s) {
+        await supabase.from("users").update({ [dbKey]: editValue }).eq("id", s.user.id);
+        setProfileData(p => ({ ...p, [field]: editValue }));
+      }
+    } catch (e) { console.error(e); }
+    setEditingField(null);
+    setSaving(false);
+  };
+
+  const handleSetupPayouts = async () => {
+    setPayoutLoading(true);
+    try {
+      const s = supabase.auth.session ? supabase.auth.session() : null;
+      if (!s) return;
+      const res = await fetch("/api/connect-seller", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${s.access_token}` },
+        body: JSON.stringify({ userId: s.user.id, email: s.user.email })
+      });
+      const data = await res.json();
+      if (data.onboardingUrl) window.location.href = data.onboardingUrl;
+    } catch (e) { console.error(e); }
+    setPayoutLoading(false);
+  };
+
+  const EditableRow = ({ label, value, field, dbKey, placeholder }) => (
+    <div style={{ padding: "18px 0", borderBottom: "1px solid var(--rule)" }}>
+      <div className="cap mono" style={{ color: "var(--ink-mute)", fontSize: 11, marginBottom: 8 }}>{label}</div>
+      {editingField === field ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input className="field" value={editValue} onChange={e => setEditValue(e.target.value)}
+            placeholder={placeholder} style={{ fontSize: 14, flex: 1, minWidth: 200 }} autoFocus
+            onKeyDown={e => e.key === "Enter" && saveField(field, dbKey)} />
+          <button className="btn btn-accent btn-sm" onClick={() => saveField(field, dbKey)} disabled={saving}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditingField(null)}>Cancel</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 15, color: value ? "var(--ink)" : "var(--ink-mute)" }}>
+            {value || <span style={{ fontStyle: "italic" }}>Not set — click Edit to add</span>}
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={() => startEdit(field, value)}>Edit</button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="fade-in container" style={{ padding: "clamp(20px, 4vw, 40px) clamp(16px, 4vw, 32px)", maxWidth: 1200 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <div>
-          <div className="cap mono" style={{ color: "var(--ink-mute)" }}>§ Account</div>
-          <h1 className="serif" style={{ fontSize: 64, fontStyle: "italic", fontWeight: 400, margin: "10px 0 0", letterSpacing: "-0.02em", lineHeight: 0.95 }}>Hi, {user.handle}.</h1>
-        </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 16 }}>
+        <h1 className="serif" style={{ fontSize: "clamp(36px, 5vw, 64px)", fontStyle: "italic", fontWeight: 400, margin: 0, letterSpacing: "-0.02em", lineHeight: 0.95 }}>
+          Hi, {user?.handle || "there"}.
+        </h1>
         <div style={{ textAlign: "right" }}>
-          <div className="mono cap-sm" style={{ color: "var(--ink-mute)" }}>Member since</div>
-          <div className="serif" style={{ fontSize: 22 }}>September 2024</div>
-          <div className="mono cap-sm" style={{ color: "var(--accent)", marginTop: 4 }}>● VERIFIED EXETER STUDENT</div>
+          <div className="mono cap-sm" style={{ color: "var(--accent)" }}>● Verified Exeter Student</div>
+          <div style={{ fontSize: 13, color: "var(--ink-mute)", marginTop: 4 }}>{user?.email || ""}</div>
         </div>
       </div>
       <hr className="rule-ink" style={{ margin: "24px 0" }} />
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 48, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "clamp(140px, 18vw, 220px) 1fr", gap: "clamp(24px, 4vw, 48px)", alignItems: "start" }}>
         <aside>
           {sections.map((s) => (
             <button key={s.id} onClick={() => setSection(s.id)} style={{
@@ -2878,48 +3066,54 @@ function AccountScreen({ go, user, onSignOut }) {
           <hr className="rule-ink" style={{ margin: "18px 0" }} />
           <button className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center", borderColor: "var(--danger)", color: "var(--danger)" }} onClick={onSignOut}>Sign out</button>
         </aside>
+
         <div>
           {section === "profile" && (
             <div>
-              <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 18px" }}>Profile</h2>
-              {[["Display handle", `@${user.handle}`], ["University email", `${user.handle}@exeter.ac.uk`], ["First name", "Marlow"], ["Course / year", "BSc Computer Science · Year 3"]].map(([l, v]) => (
-                <div key={l} style={{ display: "grid", gridTemplateColumns: "200px 1fr auto", gap: 18, padding: "18px 0", borderBottom: "1px solid var(--rule)", alignItems: "center" }}>
-                  <div className="cap mono" style={{ color: "var(--ink-mute)" }}>{l}</div>
-                  <div className="mono" style={{ fontSize: 14 }}>{v}</div>
-                  <button className="btn btn-ghost btn-sm">Edit</button>
-                </div>
-              ))}
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 20px" }}>Profile</h2>
+              <div style={{ padding: "18px 0", borderBottom: "1px solid var(--rule)" }}>
+                <div className="cap mono" style={{ color: "var(--ink-mute)", fontSize: 11, marginBottom: 8 }}>University email</div>
+                <div style={{ fontSize: 15 }}>{user?.email || `${user?.handle}@exeter.ac.uk`}</div>
+              </div>
+              <EditableRow label="First name" value={profileData.firstName} field="firstName" dbKey="first_name" placeholder="Your first name" />
+              <EditableRow label="Course / year" value={profileData.courseYear} field="courseYear" dbKey="course_year" placeholder="e.g. BSc Computer Science · Year 2" />
             </div>
           )}
+
           {section === "payouts" && (
             <div>
-              <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 8px" }}>Payouts</h2>
-              <p style={{ fontSize: 14, color: "var(--ink-mute)", maxWidth: 560, marginBottom: 18 }}>Payouts hit your account 2 hours after the buyer scans in at the door. UK Faster Payments only.</p>
-              {[["Account holder", "Marlow Bennett"], ["Sort code", "04-00-04"], ["Account number", "•••• 8821"], ["Currency", "GBP"]].map(([l, v]) => (
-                <div key={l} style={{ display: "grid", gridTemplateColumns: "200px 1fr auto", gap: 18, padding: "18px 0", borderBottom: "1px solid var(--rule)", alignItems: "center" }}>
-                  <div className="cap mono" style={{ color: "var(--ink-mute)" }}>{l}</div>
-                  <div className="mono" style={{ fontSize: 14 }}>{v}</div>
-                  <button className="btn btn-ghost btn-sm">Edit</button>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 8px" }}>Payout details</h2>
+              <p style={{ fontSize: 14, color: "var(--ink-mute)", maxWidth: 540, marginBottom: 24, lineHeight: 1.6 }}>
+                Connect your bank account to receive payouts when your tickets sell. Powered by Stripe — your bank details are handled securely by Stripe and never stored by Exeticket.
+              </p>
+              {payoutSetup ? (
+                <div style={{ padding: "20px 24px", border: "1px solid var(--accent)", background: "var(--accent-soft)" }}>
+                  <div className="cap mono" style={{ color: "var(--accent-deep)", marginBottom: 6 }}>✓ Payouts enabled</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-mute)", lineHeight: 1.6 }}>Your bank account is connected. Payouts are sent automatically 48 hours after each event ends.</div>
+                  <button className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={handleSetupPayouts}>Update bank details →</button>
                 </div>
-              ))}
+              ) : (
+                <div style={{ padding: "20px 24px", border: "1px solid var(--rule)", background: "var(--paper-2)" }}>
+                  <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 8 }}>No payout account connected</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-mute)", marginBottom: 20, lineHeight: 1.6 }}>
+                    You need to connect a bank account before listing tickets for sale. Takes about 2 minutes — Stripe handles everything securely.
+                  </div>
+                  <button className="btn btn-accent" onClick={handleSetupPayouts} disabled={payoutLoading}>
+                    {payoutLoading
+                      ? <><span className="spin" style={{ borderColor: "var(--accent-fg)", borderRightColor: "transparent" }}></span> Loading…</>
+                      : "Set up payouts via Stripe →"}
+                  </button>
+                </div>
+              )}
             </div>
           )}
-          {section === "security" && (
+
+          {section === "notifications" && (
             <div>
-              <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 18px" }}>Security</h2>
-              {[["Sign-in method", "Magic link · @exeter.ac.uk"], ["Active sessions", "2 devices · MacBook Pro · iPhone"], ["Two-factor", "Authenticator app · enabled"], ["Backup codes", "8 of 10 unused"]].map(([l, v]) => (
-                <div key={l} style={{ display: "grid", gridTemplateColumns: "200px 1fr auto", gap: 18, padding: "18px 0", borderBottom: "1px solid var(--rule)", alignItems: "center" }}>
-                  <div className="cap mono" style={{ color: "var(--ink-mute)" }}>{l}</div>
-                  <div className="mono" style={{ fontSize: 14 }}>{v}</div>
-                  <button className="btn btn-ghost btn-sm">Manage</button>
-                </div>
-              ))}
-            </div>
-          )}
-          {(section === "notifications" || section === "data") && (
-            <div>
-              <h2 className="serif" style={{ fontSize: 32, fontStyle: "italic", fontWeight: 400, margin: "0 0 18px" }}>{section === "notifications" ? "Notifications" : "Data & privacy"}</h2>
-              <p style={{ color: "var(--ink-mute)", fontSize: 14 }}>Settings for {section} are available here.</p>
+              <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 18px" }}>Notifications</h2>
+              <p style={{ color: "var(--ink-mute)", fontSize: 14, lineHeight: 1.6 }}>
+                Emails are sent to <b>{user?.email}</b> for purchases, sales, price alerts and disputes. Notification preferences will be configurable here soon.
+              </p>
             </div>
           )}
         </div>
