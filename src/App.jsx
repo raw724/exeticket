@@ -340,7 +340,7 @@ const INFO_CONTENT = {
     ["Annual re-verification","Each September you re-verify with your university email. Keeps grads from lingering."],
   ]},
   about: { title:"About Exeticket", body:[
-    ["Built in Exeter","Exeticket was started by a first-year Computer Science student at Exeter after watching a friend lose £85 in a Facebook Marketplace ticket scam in 2024. Built from a dorm room, for Exeter students who deserve better than group chat ticket roulette."],
+    ["Built in Exeter","Exeticket was started by a first-year Computer Science student at Exeter after watching a friend lose £85 in a Facebook ticket scam in 2025. Built from a dorm room, for Exeter students who deserve better than group chat ticket roulette."],
     ["Why a flat fee","Percentage fees punish people selling higher-priced tickets. 99p covers what it costs to run the platform — nothing more. Simple, fair, fixed."],
     ["Where we run","Exeter only. The whole point is local trust — keeping it small keeps it accountable. No plans to expand."],
     ["Funded by","100% self-funded. No investors, no VC money, no corporate backing. Built and paid for out of pocket."],
